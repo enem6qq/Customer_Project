@@ -9,9 +9,12 @@
 
 ## Phase 1 – Überzeugende Demo (1–2 Wochen)
 
-- Lokales LLM anbinden (Ollama, z. B. `llama3.1:8b` oder ein deutsches Modell)
-- **Hybrid-Suche:** BM25 + Embeddings (z. B. `intfloat/multilingual-e5-base`,
-  läuft lokal) mit Reranking – deutlich bessere Treffer bei deutschen Fragen
+- ✅ **Hybrid-Suche:** BM25 + Embeddings (`intfloat/multilingual-e5-small`,
+  läuft lokal) mit Reciprocal Rank Fusion – bessere Treffer bei Umschreibungen
+- ✅ **Privat-Modus:** lokale Einzelnutzung ohne Login (`./start.sh privat`),
+  eigener Dokumentenordner per `DOCUMENTS_PATH`
+- ✅ Ollama-Anbindung mit automatischem Fallback (per Test abgesichert)
+- Lokales LLM in der Praxis erproben (z. B. `llama3.1:8b` oder ein deutsches Modell)
 - Dokument-Download/-Vorschau direkt aus der Quellenliste
 - Echte Kundendokumente eines Pilotpartners einspielen (anonymisiert testen)
 

@@ -40,7 +40,11 @@ class LLMConfig(BaseModel):
 
 
 class RetrievalConfig(BaseModel):
+    # "bm25" (Volltext, ohne Zusatzpakete) oder "hybrid" (BM25 + Embeddings;
+    # benötigt: pip install -r requirements-embeddings.txt)
     provider: str = "bm25"
+    # Mehrsprachiges Modell, läuft lokal auf CPU – gut für deutsche Fragen.
+    embedding_model: str = "intfloat/multilingual-e5-small"
     chunk_size: int = 800
     chunk_overlap: int = 150
     top_k: int = 5
@@ -60,6 +64,10 @@ class UnternehmenConfig(BaseModel):
 
 class TenantConfig(BaseModel):
     unternehmen: UnternehmenConfig = Field(default_factory=UnternehmenConfig)
+    # "team"   = Login + Benutzerrechte (Standard für Unternehmen)
+    # "privat" = kein Login, alle Dokumente sichtbar – für die lokale,
+    #            persönliche Nutzung auf dem eigenen Rechner
+    modus: str = "team"
     llm: LLMConfig = Field(default_factory=LLMConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     dokumente_pfad: str = "data/documents"
@@ -93,8 +101,14 @@ def get_settings() -> Settings:
     if not jwt_secret:
         # Für die lokale Demo tolerierbar – im Betrieb MUSS JWT_SECRET gesetzt sein.
         jwt_secret = "nur-fuer-lokale-entwicklung-aendern"
+    tenant = _load_tenant(tenant_path)
+    # Eigenen Dokumentenordner ohne Konfigurationsänderung nutzen, z. B.:
+    #   DOCUMENTS_PATH=~/Dokumente ./start.sh privat
+    dokumente_env = os.environ.get("DOCUMENTS_PATH", "")
+    if dokumente_env:
+        tenant.dokumente_pfad = str(Path(dokumente_env).expanduser())
     return Settings(
-        tenant=_load_tenant(tenant_path),
+        tenant=tenant,
         users_file=users_path,
         jwt_secret=jwt_secret,
         jwt_ttl_minutes=int(os.environ.get("JWT_TTL_MINUTES", "480")),

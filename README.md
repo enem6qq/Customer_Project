@@ -44,8 +44,14 @@ Dateiablagen verstreut liegt und Dokumente mangels Auffindbarkeit doppelt erstel
 
 - **Ingestion:** liest Dokumente aus `data/documents/<gruppe>/...`. Der oberste
   Ordnername ist die Zugriffsgruppe (z. B. `allgemein`, `personal`, `finanzen`).
-- **Retrieval:** Standard ist BM25 (rein Python, läuft überall sofort). Eine
-  Vektor-Suche (Embeddings) kann als Provider ergänzt werden, ohne die API zu ändern.
+- **Retrieval:** Standard ist BM25 (rein Python, läuft überall sofort).
+  Optional **Hybrid-Suche** (BM25 + semantische Embeddings mit einem lokalen,
+  mehrsprachigen Modell): findet auch Umschreibungen wie „freie Tage" →
+  Urlaubsregelung. Aktivieren:
+  `pip install -r backend/requirements-embeddings.txt` und in `config/tenant.yaml`
+  `retrieval.provider: "hybrid"` setzen. Das Embedding-Modell
+  (`intfloat/multilingual-e5-small`) wird beim ersten Start einmalig
+  heruntergeladen und läuft danach komplett lokal auf der CPU.
 - **LLM:** Standard ist der **extraktive Modus** (keinerlei LLM nötig – gibt die besten
   Fundstellen strukturiert zurück). Für echte generierte Antworten:
   - `ollama` – lokales LLM auf eigenem Server (empfohlen für maximale Datenhoheit)
@@ -54,18 +60,37 @@ Dateiablagen verstreut liegt und Dokumente mangels Auffindbarkeit doppelt erstel
 
 ---
 
-## Schnellstart (lokal, ohne Docker)
+## Schnellstart am eigenen Rechner
+
+Voraussetzung: Python 3.11+ ([python.org](https://www.python.org/downloads/),
+bei Windows im Installer „Add python to PATH" anhaken).
 
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# Demo-Konfiguration und Demo-Dokumente liegen bereits im Repo
-uvicorn app.main:app --reload
+# Linux / macOS                 # Windows (Eingabeaufforderung)
+./start.sh                      start.bat
 ```
 
-Dann im Browser: **http://localhost:8000**
+Das Skript richtet beim ersten Start automatisch alles ein (virtuelle Umgebung,
+Abhängigkeiten) und startet den Server. Dann im Browser: **http://localhost:8000**
+
+### Privat-Modus: eigene Dokumente, kein Login
+
+Zum persönlichen Ausprobieren mit der eigenen Ablage – ohne Benutzerverwaltung:
+
+```bash
+# Linux / macOS
+DOCUMENTS_PATH="$HOME/Dokumente" ./start.sh privat
+
+# Windows
+set DOCUMENTS_PATH=C:\Users\DeinName\Dokumente
+start.bat privat
+```
+
+Der Chatbot indiziert dann den angegebenen Ordner (inkl. Unterordner;
+`.pdf`, `.docx`, `.txt`, `.md`) und ist sofort ohne Anmeldung nutzbar.
+Alle Einstellungen dazu: `config/tenant.privat.yaml`.
+**Es verlässt dabei nichts deinen Rechner** – Indizierung und Suche laufen
+komplett lokal.
 
 Demo-Benutzer (siehe `config/users.yaml`):
 
@@ -89,6 +114,11 @@ docker compose --profile llm up --build
 
 ## Neues Unternehmen aufsetzen (Template-Nutzung)
 
+Damit dieses Repository als Vorlage dient: auf GitHub unter
+**Settings → General → Template repository** den Haken setzen. Danach kann
+für jedes Unternehmen mit **„Use this template"** ein eigenes Repository
+erzeugt werden.
+
 1. Repository als Vorlage klonen (`Use this template` / Fork).
 2. `config/tenant.yaml` anpassen: Name, LLM-Provider, Ansprechpartner, Chunking.
 3. `config/users.yaml` anlegen – Hashes erzeugen mit:
@@ -107,7 +137,7 @@ Geheimnisse (API-Keys, JWT-Secret) kommen **nur** aus Umgebungsvariablen – sie
 
 | Methode | Pfad                  | Beschreibung                                  |
 |---------|-----------------------|-----------------------------------------------|
-| POST    | `/api/auth/login`     | Login, liefert JWT                            |
+| POST    | `/api/auth/login`     | Login, liefert JWT (entfällt im Privat-Modus) |
 | GET     | `/api/auth/me`        | Eigene Rollen/Gruppen                         |
 | POST    | `/api/chat`           | Frage stellen → Antwort + Quellen             |
 | GET     | `/api/documents/search?q=` | Reine Dokumentsuche (ohne LLM)           |

@@ -1,0 +1,4 @@
+# Optionale Pakete für die semantische Hybrid-Suche (retrieval.provider: "hybrid").
+# Achtung: installiert PyTorch (mehrere hundert MB). Für schwache Rechner oder
+# schnelle Demos reicht der Standard "bm25" ohne diese Pakete.
+sentence-transformers>=3.0

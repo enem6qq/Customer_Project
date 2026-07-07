@@ -111,11 +111,22 @@ def get_user_store() -> UserStore:
     return user_store
 
 
+PRIVAT_USER = User(
+    username="privat",
+    anzeigename="Privater Modus",
+    rollen=["admin"],
+    gruppen=["*"],
+)
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     settings: Settings = Depends(get_settings),
     store: UserStore = Depends(get_user_store),
 ) -> User:
+    # Privat-Modus: lokale Einzelnutzung ohne Login, alle Dokumente sichtbar.
+    if settings.tenant.modus == "privat":
+        return PRIVAT_USER
     if credentials is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Nicht angemeldet")
     try:

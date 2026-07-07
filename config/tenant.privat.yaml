@@ -1,0 +1,36 @@
+# Privat-Modus: den Chatbot lokal am eigenen Rechner für die eigenen
+# Dokumente nutzen – ohne Login, alle Dokumente sichtbar.
+#
+# Start:   ./start.sh privat          (Windows: start.bat privat)
+# Eigener Dokumentenordner ohne Änderung dieser Datei:
+#          DOCUMENTS_PATH=~/Dokumente ./start.sh privat
+
+unternehmen:
+  name: "Meine private Ablage"
+  sprache: "de"
+
+modus: "privat"
+
+llm:
+  # Ohne installiertes LLM liefert "extractive" die besten Original-Fundstellen.
+  # Mit Ollama (https://ollama.com, einmalig: ollama pull llama3.1:8b):
+  #   provider: "ollama"
+  provider: "extractive"
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama3.1:8b"
+
+retrieval:
+  # "bm25" läuft sofort. Für bessere Treffer bei Umschreibungen:
+  #   pip install -r backend/requirements-embeddings.txt  und  provider: "hybrid"
+  provider: "bm25"
+  embedding_model: "intfloat/multilingual-e5-small"
+  chunk_size: 800
+  chunk_overlap: 150
+  top_k: 5
+
+# Hier den eigenen Ordner eintragen (oder per DOCUMENTS_PATH überschreiben).
+# Unterordner werden komplett durchsucht (.pdf, .docx, .txt, .md).
+dokumente_pfad: "data/documents"
+
+ansprechpartner: []

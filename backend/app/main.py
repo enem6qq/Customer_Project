@@ -46,7 +46,17 @@ def _reindex(settings: Settings) -> int:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     auth.user_store = UserStore(settings.users_file)
-    state.retriever = erstelle_retriever(settings.tenant.retrieval.provider)
+    try:
+        state.retriever = erstelle_retriever(settings.tenant.retrieval)
+    except Exception:
+        # Z. B. Embedding-Pakete fehlen oder Modell-Download nicht möglich:
+        # lieber mit Volltextsuche starten als gar nicht.
+        logger.exception(
+            "Retrieval-Provider %r konnte nicht initialisiert werden – "
+            "falle auf BM25 (Volltextsuche) zurück",
+            settings.tenant.retrieval.provider,
+        )
+        state.retriever = BM25Retriever()
     state.llm = erstelle_llm(settings.tenant.llm)
     anzahl = _reindex(settings)
     logger.info(
@@ -188,12 +198,13 @@ def reindex(
 
 @app.get("/api/health")
 def health(settings: Settings = Depends(get_settings)):
-    chunks = state.retriever.anzahl_chunks if isinstance(state.retriever, BM25Retriever) else None
     return {
         "status": "ok",
         "unternehmen": settings.tenant.unternehmen.name,
+        "modus": settings.tenant.modus,
         "llm_provider": settings.tenant.llm.provider,
-        "chunks": chunks,
+        "retrieval_provider": settings.tenant.retrieval.provider,
+        "chunks": getattr(state.retriever, "anzahl_chunks", None),
     }
 
 

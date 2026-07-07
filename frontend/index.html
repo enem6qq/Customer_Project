@@ -87,16 +87,13 @@ function zeigeApp(anzeigename, gruppen) {
   $("kopf").hidden = false;
   $("verlaufContainer").hidden = false;
   $("fuss").hidden = false;
-  $("userInfo").textContent = anzeigename + " · Gruppen: " + gruppen.join(", ");
-  ladeHealth();
+  $("userInfo").textContent = gruppen.length
+    ? anzeigename + " · Gruppen: " + gruppen.join(", ")
+    : anzeigename;
 }
 
-async function ladeHealth() {
-  try {
-    const r = await fetch("/api/health");
-    const d = await r.json();
-    $("firmenname").textContent = "Wissens-Chatbot – " + d.unternehmen;
-  } catch (e) { /* Anzeige bleibt generisch */ }
+function authHeaders() {
+  return token ? { "Authorization": "Bearer " + token } : {};
 }
 
 $("loginForm").addEventListener("submit", async (ev) => {
@@ -137,7 +134,7 @@ $("chatForm").addEventListener("submit", async (ev) => {
   try {
     const r = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
       body: JSON.stringify({ frage }),
     });
     if (r.status === 401) { sessionStorage.clear(); location.reload(); return; }
@@ -169,10 +166,24 @@ $("chatForm").addEventListener("submit", async (ev) => {
   }
 });
 
-if (token) {
-  zeigeApp(sessionStorage.getItem("anzeigename") || "",
-           JSON.parse(sessionStorage.getItem("gruppen") || "[]"));
-}
+// Startablauf: Modus vom Server holen. Im Privat-Modus (lokale Nutzung
+// eigener Dokumente) gibt es keinen Login – direkt loslegen.
+(async () => {
+  try {
+    const r = await fetch("/api/health");
+    const d = await r.json();
+    $("firmenname").textContent = "Wissens-Chatbot – " + d.unternehmen;
+    if (d.modus === "privat") {
+      $("logout").hidden = true;
+      zeigeApp("Privater Modus – alle eigenen Dokumente (" + (d.chunks ?? 0) + " Abschnitte indiziert)", []);
+      return;
+    }
+  } catch (e) { /* Server noch nicht erreichbar – Login anzeigen */ }
+  if (token) {
+    zeigeApp(sessionStorage.getItem("anzeigename") || "",
+             JSON.parse(sessionStorage.getItem("gruppen") || "[]"));
+  }
+})();
 </script>
 </body>
 </html>
