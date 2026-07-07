@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-bitte-in-env-datei-setzen}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+    volumes:
+      # Dokumente und Konfiguration von außen einspielbar (pro Unternehmen)
+      - ./data:/app/data
+      - ./config:/app/config
+
+  # Optionales lokales LLM: docker compose --profile llm up
+  # Danach in config/tenant.yaml: llm.provider auf "ollama" stellen und
+  # base_url auf http://ollama:11434 setzen. Modell einmalig laden mit:
+  #   docker compose exec ollama ollama pull llama3.1:8b
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  ollama-data:

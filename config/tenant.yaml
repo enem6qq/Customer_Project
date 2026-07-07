@@ -1,0 +1,42 @@
+# Unternehmensspezifische Konfiguration (Mandant).
+# Für ein neues Unternehmen: diese Datei anpassen – kein Code ändern.
+
+unternehmen:
+  name: "Musterstadt Stadtverwaltung"
+  sprache: "de"
+
+llm:
+  # "extractive"  = ohne Sprachmodell (Demo/Fallback, läuft überall)
+  # "ollama"      = lokales LLM auf eigenem Server (maximale Datenhoheit)
+  # "openai_compatible" = OpenAI-kompatibler EU-/DE-Endpunkt (AVV beachten!)
+  provider: "extractive"
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama3.1:8b"
+  openai_compatible:
+    base_url: ""
+    model: ""
+    api_key_env: "LLM_API_KEY"
+
+retrieval:
+  provider: "bm25"
+  chunk_size: 800
+  chunk_overlap: 150
+  top_k: 5
+
+# Ablageverzeichnis. Der oberste Ordnername = Zugriffsgruppe (RBAC).
+dokumente_pfad: "data/documents"
+
+# Zuständigkeiten – werden bei passenden Fragen mit angezeigt.
+ansprechpartner:
+  - bereich: "Urlaub"
+    name: "Frau Müller (Personalabteilung)"
+    email: "personal@musterstadt.example"
+    telefon: "0511 / 123-456"
+  - bereich: "IT"
+    name: "Herr Schmidt (IT-Service)"
+    email: "it-service@musterstadt.example"
+    telefon: "0511 / 123-789"
+  - bereich: "Dienstreise"
+    name: "Frau Weber (Reisekostenstelle)"
+    email: "reisekosten@musterstadt.example"

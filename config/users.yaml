@@ -1,0 +1,22 @@
+# Benutzer für den Prototyp (Demo-Passwörter, siehe README).
+# Hashes erzeugen: python backend/scripts/hash_password.py
+# Produktiv wird dieser Baustein durch LDAP / Active Directory / Keycloak ersetzt.
+
+benutzer:
+  - username: admin
+    anzeigename: "Administrator"
+    password_hash: "pbkdf2$B9wqxcu5SNn9JYAm5AJBvw==$gsTS/9mH6BKEF0xqt1oXUrIC62AOJawDUo51NICQmG0="
+    rollen: [admin]
+    gruppen: ["*"]
+
+  - username: mmuster
+    anzeigename: "Max Mustermann (Personal)"
+    password_hash: "pbkdf2$1HbSvCqBIy+AR7ia9oKBrw==$e3tFYuKgicCsBOkg8Hn2Sb7fDlEz67eP2nvprQPSMLE="
+    rollen: [mitarbeiter]
+    gruppen: ["allgemein", "personal"]
+
+  - username: gast
+    anzeigename: "Gastnutzer"
+    password_hash: "pbkdf2$ABlYICAQ+3gLQfnk3SiuBw==$mTJbdifs6sygDjBlHUAh7rjxNpkIE9GP+xlwvjTQP1I="
+    rollen: [gast]
+    gruppen: ["allgemein"]

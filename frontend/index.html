@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wissens-Chatbot</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --border: #dde3ea;
+    --text: #1c2733; --muted: #5b6b7c; --accent: #0f5cbf; --accent-soft: #e8f0fb;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { background: var(--card); border-bottom: 1px solid var(--border);
+           padding: 0.8rem 1.2rem; display: flex; align-items: center; gap: 0.8rem; }
+  header h1 { font-size: 1.05rem; margin: 0; }
+  header .spacer { flex: 1; }
+  header .user { color: var(--muted); font-size: 0.85rem; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+           padding: 0.55rem 1rem; font-size: 0.95rem; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); }
+  main { flex: 1; overflow-y: auto; padding: 1.2rem; }
+  .wrap { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.9rem; }
+  .msg { padding: 0.8rem 1rem; border-radius: 12px; line-height: 1.5; white-space: pre-wrap;
+         border: 1px solid var(--border); }
+  .msg.user { background: var(--accent-soft); align-self: flex-end; max-width: 85%; }
+  .msg.bot  { background: var(--card); align-self: flex-start; max-width: 95%; }
+  .quellen { margin-top: 0.6rem; font-size: 0.82rem; color: var(--muted); }
+  .quellen b { color: var(--text); }
+  .quelle { border-top: 1px dashed var(--border); padding-top: 0.4rem; margin-top: 0.4rem; }
+  .kontakt { margin-top: 0.5rem; font-size: 0.85rem; background: var(--accent-soft);
+             border-radius: 8px; padding: 0.5rem 0.7rem; }
+  footer { background: var(--card); border-top: 1px solid var(--border); padding: 0.9rem 1.2rem; }
+  form.chat { max-width: 780px; margin: 0 auto; display: flex; gap: 0.6rem; }
+  input[type=text], input[type=password] { flex: 1; border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 1rem; background: var(--card); }
+  /* Login */
+  #login { position: fixed; inset: 0; background: var(--bg); display: flex;
+           align-items: center; justify-content: center; }
+  #login .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+                 padding: 2rem; width: 340px; display: flex; flex-direction: column; gap: 0.8rem; }
+  #login h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
+  #login .hinweis { font-size: 0.78rem; color: var(--muted); }
+  .fehler { color: #b3261e; font-size: 0.85rem; min-height: 1.2em; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form class="card" id="loginForm">
+    <h2 id="loginTitel">Wissens-Chatbot – Anmeldung</h2>
+    <input type="text" id="username" placeholder="Benutzername" autocomplete="username" required>
+    <input type="password" id="password" placeholder="Passwort" autocomplete="current-password" required>
+    <div class="fehler" id="loginFehler"></div>
+    <button type="submit">Anmelden</button>
+    <div class="hinweis">Demo-Zugänge: admin/admin123 · mmuster/demo123 · gast/gast123</div>
+  </form>
+</div>
+
+<header hidden id="kopf">
+  <h1 id="firmenname">Wissens-Chatbot</h1>
+  <div class="spacer"></div>
+  <span class="user" id="userInfo"></span>
+  <button class="secondary" id="logout">Abmelden</button>
+</header>
+
+<main hidden id="verlaufContainer"><div class="wrap" id="verlauf">
+  <div class="msg bot">Hallo! Ich beantworte Fragen auf Basis der internen Wissensdatenbank
+und finde Dokumente und Ansprechpartner für Sie. Was möchten Sie wissen?</div>
+</div></main>
+
+<footer hidden id="fuss">
+  <form class="chat" id="chatForm">
+    <input type="text" id="frage" placeholder="Frage stellen, z. B. „Wie beantrage ich Urlaub?“" autocomplete="off">
+    <button type="submit">Senden</button>
+  </form>
+</footer>
+
+<script>
+let token = sessionStorage.getItem("token") || "";
+
+const $ = (id) => document.getElementById(id);
+
+function zeigeApp(anzeigename, gruppen) {
+  $("login").hidden = true;
+  $("kopf").hidden = false;
+  $("verlaufContainer").hidden = false;
+  $("fuss").hidden = false;
+  $("userInfo").textContent = anzeigename + " · Gruppen: " + gruppen.join(", ");
+  ladeHealth();
+}
+
+async function ladeHealth() {
+  try {
+    const r = await fetch("/api/health");
+    const d = await r.json();
+    $("firmenname").textContent = "Wissens-Chatbot – " + d.unternehmen;
+  } catch (e) { /* Anzeige bleibt generisch */ }
+}
+
+$("loginForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("loginFehler").textContent = "";
+  const r = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: $("username").value, password: $("password").value }),
+  });
+  if (!r.ok) { $("loginFehler").textContent = "Benutzername oder Passwort falsch."; return; }
+  const d = await r.json();
+  token = d.token;
+  sessionStorage.setItem("token", token);
+  sessionStorage.setItem("anzeigename", d.anzeigename);
+  sessionStorage.setItem("gruppen", JSON.stringify(d.gruppen));
+  zeigeApp(d.anzeigename, d.gruppen);
+});
+
+$("logout").addEventListener("click", () => { sessionStorage.clear(); location.reload(); });
+
+function nachricht(text, wer) {
+  const div = document.createElement("div");
+  div.className = "msg " + wer;
+  div.textContent = text;
+  $("verlauf").appendChild(div);
+  div.scrollIntoView({ behavior: "smooth" });
+  return div;
+}
+
+$("chatForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const frage = $("frage").value.trim();
+  if (!frage) return;
+  $("frage").value = "";
+  nachricht(frage, "user");
+  const laden = nachricht("Suche in der Wissensdatenbank …", "bot");
+  try {
+    const r = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ frage }),
+    });
+    if (r.status === 401) { sessionStorage.clear(); location.reload(); return; }
+    const d = await r.json();
+    laden.textContent = d.antwort;
+    if (d.quellen && d.quellen.length) {
+      const q = document.createElement("div");
+      q.className = "quellen";
+      q.innerHTML = "<b>Quellen:</b>";
+      for (const s of d.quellen) {
+        const e = document.createElement("div");
+        e.className = "quelle";
+        e.textContent = s.titel + " (" + s.dokument + ", Gruppe: " + s.gruppe + ")";
+        q.appendChild(e);
+      }
+      laden.appendChild(q);
+    }
+    if (d.ansprechpartner && d.ansprechpartner.length) {
+      for (const a of d.ansprechpartner) {
+        const k = document.createElement("div");
+        k.className = "kontakt";
+        k.textContent = "Ansprechpartner " + a.bereich + ": " + a.name +
+          (a.email ? " · " + a.email : "") + (a.telefon ? " · " + a.telefon : "");
+        laden.appendChild(k);
+      }
+    }
+  } catch (e) {
+    laden.textContent = "Fehler: Server nicht erreichbar.";
+  }
+});
+
+if (token) {
+  zeigeApp(sessionStorage.getItem("anzeigename") || "",
+           JSON.parse(sessionStorage.getItem("gruppen") || "[]"));
+}
+</script>
+</body>
+</html>
