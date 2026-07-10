@@ -39,6 +39,10 @@
   /* Login */
   #login { position: fixed; inset: 0; background: var(--bg); display: flex;
            align-items: center; justify-content: center; }
+  /* Wichtig: 'display: flex' auf #login ist spezifischer als die Browser-Regel
+     '[hidden] { display: none }' – ohne diese Zeile bliebe das Login-Overlay
+     nach erfolgreicher Anmeldung sichtbar. */
+  #login[hidden] { display: none; }
   #login .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
                  padding: 2rem; width: 340px; display: flex; flex-direction: column; gap: 0.8rem; }
   #login h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
