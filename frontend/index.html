@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wissens-Chatbot</title>
+<link rel="icon" href="data:,">
 <style>
   :root {
     --bg: #f4f6f8; --card: #ffffff; --border: #dde3ea;
@@ -78,7 +79,20 @@ und finde Dokumente und Ansprechpartner für Sie. Was möchten Sie wissen?</div>
 </footer>
 
 <script>
-let token = sessionStorage.getItem("token") || "";
+// Seitenspeicher kann durch Browser-Einstellungen blockiert sein (SecurityError).
+// Die Anmeldung muss auch dann funktionieren – Speicher ist nur Komfort
+// (eingeloggt bleiben beim Neuladen), deshalb alle Zugriffe abgesichert.
+function speicherLies(key) {
+  try { return sessionStorage.getItem(key); } catch (e) { return null; }
+}
+function speicherSchreib(key, value) {
+  try { sessionStorage.setItem(key, value); } catch (e) { /* ohne Speicher weiter */ }
+}
+function speicherLeeren() {
+  try { sessionStorage.clear(); } catch (e) { /* ohne Speicher weiter */ }
+}
+
+let token = speicherLies("token") || "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -99,21 +113,27 @@ function authHeaders() {
 $("loginForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   $("loginFehler").textContent = "";
-  const r = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: $("username").value, password: $("password").value }),
-  });
-  if (!r.ok) { $("loginFehler").textContent = "Benutzername oder Passwort falsch."; return; }
-  const d = await r.json();
-  token = d.token;
-  sessionStorage.setItem("token", token);
-  sessionStorage.setItem("anzeigename", d.anzeigename);
-  sessionStorage.setItem("gruppen", JSON.stringify(d.gruppen));
-  zeigeApp(d.anzeigename, d.gruppen);
+  try {
+    const r = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("username").value, password: $("password").value }),
+    });
+    if (!r.ok) { $("loginFehler").textContent = "Benutzername oder Passwort falsch."; return; }
+    const d = await r.json();
+    token = d.token;
+    speicherSchreib("token", token);
+    speicherSchreib("anzeigename", d.anzeigename);
+    speicherSchreib("gruppen", JSON.stringify(d.gruppen));
+    zeigeApp(d.anzeigename, d.gruppen);
+  } catch (e) {
+    // Fehler sichtbar machen statt still zu scheitern
+    console.error("Anmeldefehler:", e);
+    $("loginFehler").textContent = "Technischer Fehler beim Anmelden: " + e.message;
+  }
 });
 
-$("logout").addEventListener("click", () => { sessionStorage.clear(); location.reload(); });
+$("logout").addEventListener("click", () => { speicherLeeren(); location.reload(); });
 
 function nachricht(text, wer) {
   const div = document.createElement("div");
@@ -137,7 +157,7 @@ $("chatForm").addEventListener("submit", async (ev) => {
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
       body: JSON.stringify({ frage }),
     });
-    if (r.status === 401) { sessionStorage.clear(); location.reload(); return; }
+    if (r.status === 401) { speicherLeeren(); location.reload(); return; }
     const d = await r.json();
     laden.textContent = d.antwort;
     if (d.quellen && d.quellen.length) {
@@ -180,8 +200,9 @@ $("chatForm").addEventListener("submit", async (ev) => {
     }
   } catch (e) { /* Server noch nicht erreichbar – Login anzeigen */ }
   if (token) {
-    zeigeApp(sessionStorage.getItem("anzeigename") || "",
-             JSON.parse(sessionStorage.getItem("gruppen") || "[]"));
+    let gruppen = [];
+    try { gruppen = JSON.parse(speicherLies("gruppen") || "[]"); } catch (e) {}
+    zeigeApp(speicherLies("anzeigename") || "", gruppen);
   }
 })();
 </script>
