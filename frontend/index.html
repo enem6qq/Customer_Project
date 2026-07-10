@@ -36,6 +36,11 @@
   .quelle button.klein { background: transparent; color: var(--accent);
     border: 1px solid var(--border); border-radius: 6px;
     padding: 0.1rem 0.5rem; font-size: 0.78rem; }
+  .feedback { margin-top: 0.6rem; display: flex; gap: 0.4rem; align-items: center;
+              font-size: 0.82rem; color: var(--muted); }
+  .feedback button { background: transparent; border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.9rem; cursor: pointer; }
+  .feedback button:hover { background: var(--accent-soft); }
   .kontakt { margin-top: 0.5rem; font-size: 0.85rem; background: var(--accent-soft);
              border-radius: 8px; padding: 0.5rem 0.7rem; }
   footer { background: var(--card); border-top: 1px solid var(--border); padding: 0.9rem 1.2rem; }
@@ -242,6 +247,27 @@ $("chatForm").addEventListener("submit", async (ev) => {
         laden.appendChild(k);
       }
     }
+    // Feedback: misst, welche Antworten helfen und wo die Wissensbasis Lücken hat
+    const fb = document.createElement("div");
+    fb.className = "feedback";
+    fb.append("War die Antwort hilfreich?");
+    for (const [wert, symbol] of [["gut", "👍"], ["schlecht", "👎"]]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = symbol;
+      b.addEventListener("click", async () => {
+        try {
+          await fetch("/api/feedback", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+            body: JSON.stringify({ frage, antwort: d.antwort, bewertung: wert }),
+          });
+        } catch (e) { /* Feedback ist optional */ }
+        fb.textContent = "Danke für dein Feedback!";
+      });
+      fb.appendChild(b);
+    }
+    laden.appendChild(fb);
   } catch (e) {
     laden.textContent = "Fehler: Server nicht erreichbar.";
   }

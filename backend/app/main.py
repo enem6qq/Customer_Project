@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -14,7 +17,7 @@ from pydantic import BaseModel
 from . import auth
 from .auth import User, UserStore, create_token, get_current_user, require_admin
 from .config import REPO_ROOT, Settings, get_settings
-from .ingestion import lade_dokumente
+from .ingestion import LOADERS, lade_dokumente
 from .llm import LLMProvider, erstelle_llm
 from .retrieval import BM25Retriever, Retriever, erstelle_retriever
 
@@ -47,6 +50,23 @@ def _reindex(settings: Settings) -> int:
     return len(chunks)
 
 
+def _dokumente_signatur(verzeichnisse: list[Path]) -> tuple:
+    """Fingerabdruck aller Dokumentdateien (Pfad, Änderungszeit, Größe).
+
+    Ändert er sich, wurde etwas hinzugefügt, geändert oder gelöscht –
+    dann indiziert der Wächter automatisch neu.
+    """
+    eintraege = []
+    for basis in verzeichnisse:
+        if not basis.exists():
+            continue
+        for datei in basis.rglob("*"):
+            if datei.is_file() and datei.suffix.lower() in LOADERS:
+                st = datei.stat()
+                eintraege.append((str(datei), st.st_mtime_ns, st.st_size))
+    return tuple(sorted(eintraege))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -70,7 +90,34 @@ async def lifespan(app: FastAPI):
         anzahl,
         settings.tenant.llm.provider,
     )
+
+    stop = asyncio.Event()
+
+    async def waechter() -> None:
+        intervall = settings.tenant.auto_reindex_sekunden
+        verzeichnisse = settings.tenant.dokumente_verzeichnisse
+        signatur = await asyncio.to_thread(_dokumente_signatur, verzeichnisse)
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=intervall)
+                return  # stop gesetzt -> sauber beenden
+            except asyncio.TimeoutError:
+                pass
+            neue_signatur = await asyncio.to_thread(_dokumente_signatur, verzeichnisse)
+            if neue_signatur != signatur:
+                signatur = neue_signatur
+                neu = await asyncio.to_thread(_reindex, settings)
+                logger.info("Ablage geändert – automatisch neu indiziert: %d Chunks", neu)
+
+    task = None
+    if settings.tenant.auto_reindex_sekunden > 0:
+        task = asyncio.create_task(waechter())
+
     yield
+
+    stop.set()
+    if task is not None:
+        await task
 
 
 app = FastAPI(title="Wissens-Chatbot", lifespan=lifespan)
@@ -220,6 +267,57 @@ def dokument_datei(
     if not datei.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Datei existiert nicht mehr")
     return FileResponse(datei, filename=datei.name, content_disposition_type="inline")
+
+
+# ---------------------------------------------------------------- Feedback
+
+class FeedbackRequest(BaseModel):
+    frage: str
+    antwort: str
+    bewertung: str  # "gut" oder "schlecht"
+
+
+@app.post("/api/feedback")
+def feedback(
+    body: FeedbackRequest,
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    """Speichert Nutzer-Feedback zu einer Antwort (👍/👎) als JSON-Zeile.
+
+    Damit lässt sich messen, wo die Wissensbasis Lücken hat.
+    """
+    if body.bewertung not in ("gut", "schlecht"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "bewertung: gut|schlecht")
+    eintrag = {
+        "zeit": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "benutzer": user.username,
+        "bewertung": body.bewertung,
+        "frage": body.frage[:1000],
+        "antwort": body.antwort[:1000],
+    }
+    datei = settings.feedback_datei
+    datei.parent.mkdir(parents=True, exist_ok=True)
+    with datei.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(eintrag, ensure_ascii=False) + "\n")
+    return {"status": "ok"}
+
+
+@app.get("/api/admin/feedback")
+def feedback_liste(
+    _admin: User = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    datei = settings.feedback_datei
+    if not datei.exists():
+        return {"eintraege": []}
+    eintraege = []
+    for zeile in datei.read_text(encoding="utf-8").splitlines():
+        try:
+            eintraege.append(json.loads(zeile))
+        except json.JSONDecodeError:
+            continue
+    return {"eintraege": eintraege}
 
 
 # ---------------------------------------------------------------- Admin & Status
