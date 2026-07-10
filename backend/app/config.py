@@ -70,13 +70,20 @@ class TenantConfig(BaseModel):
     modus: str = "team"
     llm: LLMConfig = Field(default_factory=LLMConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
-    dokumente_pfad: str = "data/documents"
+    # Ein Pfad oder eine Liste von Pfaden – relativ zum Projekt oder absolut
+    # (z. B. "C:/Ablage/Vertraege" oder "/mnt/ablage"). Alle Ordner werden
+    # gemeinsam indiziert.
+    dokumente_pfad: str | list[str] = "data/documents"
     ansprechpartner: list[Ansprechpartner] = Field(default_factory=list)
 
     @property
-    def dokumente_verzeichnis(self) -> Path:
-        pfad = Path(self.dokumente_pfad)
-        return pfad if pfad.is_absolute() else REPO_ROOT / pfad
+    def dokumente_verzeichnisse(self) -> list[Path]:
+        roh = self.dokumente_pfad if isinstance(self.dokumente_pfad, list) else [self.dokumente_pfad]
+        verzeichnisse = []
+        for eintrag in roh:
+            pfad = Path(str(eintrag)).expanduser()
+            verzeichnisse.append(pfad if pfad.is_absolute() else REPO_ROOT / pfad)
+        return verzeichnisse
 
 
 class Settings(BaseModel):
