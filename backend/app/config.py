@@ -68,6 +68,9 @@ class TenantConfig(BaseModel):
     # "privat" = kein Login, alle Dokumente sichtbar – für die lokale,
     #            persönliche Nutzung auf dem eigenen Rechner
     modus: str = "team"
+    # Ablage alle N Sekunden auf neue/geänderte Dateien prüfen und dann
+    # automatisch neu indizieren. 0 = aus (nur beim Start / per Reindex-API).
+    auto_reindex_sekunden: int = 30
     llm: LLMConfig = Field(default_factory=LLMConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     # Ein Pfad oder eine Liste von Pfaden – relativ zum Projekt oder absolut
@@ -91,6 +94,8 @@ class Settings(BaseModel):
     users_file: Path
     jwt_secret: str
     jwt_ttl_minutes: int = 480
+    # Nutzer-Feedback (👍/👎) landet als JSON-Zeilen in dieser Datei.
+    feedback_datei: Path = REPO_ROOT / "data" / "feedback.jsonl"
 
 
 def _load_tenant(path: Path) -> TenantConfig:
@@ -119,4 +124,7 @@ def get_settings() -> Settings:
         users_file=users_path,
         jwt_secret=jwt_secret,
         jwt_ttl_minutes=int(os.environ.get("JWT_TTL_MINUTES", "480")),
+        feedback_datei=Path(
+            os.environ.get("FEEDBACK_PATH", REPO_ROOT / "data" / "feedback.jsonl")
+        ),
     )

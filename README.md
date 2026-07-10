@@ -146,8 +146,14 @@ erzeugt werden.
    `python backend/scripts/hash_password.py`
    (später ersetzbar durch LDAP/Active-Directory/Keycloak-Anbindung).
 4. Dokumente nach `data/documents/<zugriffsgruppe>/` legen.
-5. Starten – der Index wird beim Start automatisch aufgebaut
-   (neu einlesen im Betrieb: `POST /api/admin/reindex`, nur Rolle `admin`).
+5. Starten – der Index wird beim Start aufgebaut. Neue oder geänderte
+   Dateien werden danach **automatisch** erkannt und eingelesen
+   (Prüfintervall: `auto_reindex_sekunden` in der tenant.yaml, Standard 30 s;
+   0 schaltet es ab, sofort geht per `POST /api/admin/reindex`).
+
+**Feedback-Auswertung:** Jede Antwort hat 👍/👎-Buttons. Die Bewertungen
+landen in `data/feedback.jsonl` (nicht im Git) und sind für Admins unter
+`/api/admin/feedback` abrufbar – so siehst du, wo die Wissensbasis Lücken hat.
 
 ## Konfiguration
 
@@ -163,7 +169,9 @@ Geheimnisse (API-Keys, JWT-Secret) kommen **nur** aus Umgebungsvariablen – sie
 | POST    | `/api/chat`           | Frage stellen (+ Verlauf) → Antwort + Quellen |
 | GET     | `/api/documents/search?q=` | Reine Dokumentsuche (ohne LLM)           |
 | GET     | `/api/documents/file?name=` | Originaldatei einer Quelle (RBAC-geprüft) |
-| POST    | `/api/admin/reindex`  | Index neu aufbauen (Rolle `admin`)            |
+| POST    | `/api/feedback`       | 👍/👎-Bewertung einer Antwort speichern        |
+| GET     | `/api/admin/feedback` | Gesammeltes Feedback einsehen (Rolle `admin`) |
+| POST    | `/api/admin/reindex`  | Index sofort neu aufbauen (Rolle `admin`)     |
 | GET     | `/api/health`         | Statusprüfung                                 |
 
 ## Tests
