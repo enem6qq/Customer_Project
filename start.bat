@@ -18,13 +18,39 @@ if "%1"=="privat" (
 
 cd backend
 
+REM Python suchen: der py-Launcher waehlt automatisch die neueste Version,
+REM falls mehrere installiert sind (z. B. altes 3.8 + neues 3.12).
+set "PYTHON=python"
+where py >nul 2>nul && set "PYTHON=py -3"
+
+%PYTHON% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo FEHLER: Es wird Python 3.11 oder neuer benoetigt. Gefunden wurde:
+  %PYTHON% --version 2>nul || echo   kein Python im PATH
+  echo Bitte von https://www.python.org/downloads/ installieren und dabei
+  echo "Add python.exe to PATH" anhaken. Danach ein NEUES Terminal oeffnen
+  echo und start.bat erneut ausfuehren.
+  pause
+  exit /b 1
+)
+
+REM Falls die virtuelle Umgebung mit einem zu alten Python angelegt wurde:
+REM automatisch entfernen und neu aufbauen.
+if exist .venv\Scripts\python.exe (
+  .venv\Scripts\python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>nul
+  if errorlevel 1 (
+    echo ^>^> Vorhandene Umgebung nutzt ein zu altes Python – baue neu auf ...
+    rmdir /s /q .venv
+  )
+)
+
 if not exist .venv\Scripts\python.exe (
   echo ^>^> Erstelle virtuelle Umgebung ^(einmalig^) ...
-  python -m venv .venv
+  %PYTHON% -m venv .venv
   if errorlevel 1 (
     echo.
-    echo FEHLER: Python wurde nicht gefunden. Bitte Python 3.11+ von python.org
-    echo installieren und dabei "Add python.exe to PATH" anhaken.
+    echo FEHLER: Die virtuelle Umgebung konnte nicht erstellt werden.
     pause
     exit /b 1
   )
