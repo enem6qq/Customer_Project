@@ -16,6 +16,18 @@ fi
 
 cd backend
 
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "FEHLER: Es wird Python 3.11 oder neuer benötigt. Gefunden: $(python3 --version 2>&1)"
+  exit 1
+fi
+
+# Falls die virtuelle Umgebung mit einem zu alten Python angelegt wurde:
+# automatisch entfernen und neu aufbauen.
+if [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo ">> Vorhandene Umgebung nutzt ein zu altes Python – baue neu auf ..."
+  rm -rf .venv
+fi
+
 if [ ! -x .venv/bin/python ]; then
   echo ">> Erstelle virtuelle Umgebung (einmalig) ..."
   python3 -m venv .venv
