@@ -48,6 +48,25 @@ def test_ollama_sendet_kontext_und_gibt_antwort_zurueck(monkeypatch):
     assert "Demo GmbH" in aufrufe["prompt"]
 
 
+def test_ollama_beruecksichtigt_gespraechsverlauf(monkeypatch):
+    aufrufe = {}
+
+    def fake_post(url, json=None, timeout=None):
+        aufrufe["prompt"] = json["prompt"]
+        return httpx.Response(200, json={"response": "ok"},
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OllamaProvider("http://localhost:11434", "llama3.1:8b")
+    verlauf = [
+        {"rolle": "nutzer", "text": "Wo ist das Rathaus?"},
+        {"rolle": "bot", "text": "Am Marktplatz."},
+    ]
+    provider.antworte("Und die Öffnungszeiten?", TREFFER, "Demo GmbH", verlauf)
+    assert "Wo ist das Rathaus?" in aufrufe["prompt"]
+    assert "Am Marktplatz." in aufrufe["prompt"]
+
+
 def test_ollama_fallback_wenn_nicht_erreichbar(monkeypatch):
     def fake_post(url, json=None, timeout=None):
         raise httpx.ConnectError("Verbindung abgelehnt")

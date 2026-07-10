@@ -25,10 +25,11 @@ STANDARD_GRUPPE = "allgemein"
 @dataclass
 class Chunk:
     text: str
-    dokument: str          # Pfad relativ zum Ablageverzeichnis
+    dokument: str          # Anzeige-/Suchname (relativ zum Ablageverzeichnis)
     titel: str             # Dateiname ohne Endung
     gruppe: str            # Zugriffsgruppe (RBAC)
     position: int          # laufende Nummer innerhalb des Dokuments
+    pfad_absolut: str = "" # Originaldatei auf der Platte (für Öffnen/Kopieren)
     metadata: dict = field(default_factory=dict)
 
 
@@ -82,31 +83,41 @@ def split_text(text: str, chunk_size: int, overlap: int) -> list[str]:
     return chunks
 
 
-def lade_dokumente(basis: Path, chunk_size: int = 800, overlap: int = 150) -> list[Chunk]:
+def lade_dokumente(
+    basis: Path | list[Path], chunk_size: int = 800, overlap: int = 150
+) -> list[Chunk]:
+    basen = basis if isinstance(basis, list) else [basis]
     chunks: list[Chunk] = []
-    if not basis.exists():
-        logger.warning("Dokumentenverzeichnis %s existiert nicht", basis)
-        return chunks
+    mehrere_basen = len(basen) > 1
 
-    for datei in sorted(basis.rglob("*")):
-        if not datei.is_file() or datei.suffix.lower() not in LOADERS:
+    for basis_pfad in basen:
+        if not basis_pfad.exists():
+            logger.warning("Dokumentenverzeichnis %s existiert nicht", basis_pfad)
             continue
-        relativ = datei.relative_to(basis)
-        gruppe = relativ.parts[0] if len(relativ.parts) > 1 else STANDARD_GRUPPE
-        try:
-            text = LOADERS[datei.suffix.lower()](datei)
-        except Exception:
-            logger.exception("Konnte %s nicht lesen – wird übersprungen", datei)
-            continue
-        for i, teil in enumerate(split_text(text, chunk_size, overlap)):
-            chunks.append(
-                Chunk(
-                    text=teil,
-                    dokument=str(relativ),
-                    titel=datei.stem,
-                    gruppe=gruppe,
-                    position=i,
+        for datei in sorted(basis_pfad.rglob("*")):
+            if not datei.is_file() or datei.suffix.lower() not in LOADERS:
+                continue
+            relativ = datei.relative_to(basis_pfad)
+            gruppe = relativ.parts[0] if len(relativ.parts) > 1 else STANDARD_GRUPPE
+            # Bei mehreren Ablageorten den Ordnernamen voranstellen, damit die
+            # Anzeige eindeutig bleibt (z. B. "Vertraege/kunde_a/vertrag.pdf").
+            name = f"{basis_pfad.name}/{relativ.as_posix()}" if mehrere_basen else relativ.as_posix()
+            try:
+                text = LOADERS[datei.suffix.lower()](datei)
+            except Exception:
+                logger.exception("Konnte %s nicht lesen – wird übersprungen", datei)
+                continue
+            for i, teil in enumerate(split_text(text, chunk_size, overlap)):
+                chunks.append(
+                    Chunk(
+                        text=teil,
+                        dokument=name,
+                        titel=datei.stem,
+                        gruppe=gruppe,
+                        position=i,
+                        pfad_absolut=str(datei.resolve()),
+                    )
                 )
-            )
-    logger.info("%d Chunks aus %s geladen", len(chunks), basis)
+        logger.info("Dokumente aus %s geladen", basis_pfad)
+    logger.info("%d Chunks insgesamt", len(chunks))
     return chunks

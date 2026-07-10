@@ -98,6 +98,21 @@ Alle Einstellungen dazu: `config/tenant.privat.yaml`.
 **Es verlässt dabei nichts deinen Rechner** – Indizierung und Suche laufen
 komplett lokal.
 
+**Mehrere Ablageorte gleichzeitig** (unabhängig vom Projektordner) trägst du
+in der tenant.yaml als Liste ein – Windows-Pfade mit `/` schreiben:
+
+```yaml
+dokumente_pfad:
+  - "C:/Users/DeinName/Dokumente"
+  - "C:/Ablage/Vertraege"
+  - "data/documents"
+```
+
+**Quellen sind klickbar:** Ein Klick auf eine Quelle öffnet das Original
+(PDF/Text im Browser, Word als Download), „Pfad kopieren" legt den
+Originalpfad in die Zwischenablage. Beides ist RBAC-geprüft – Benutzer
+können nur Dokumente ihrer eigenen Gruppen abrufen.
+
 Demo-Benutzer (siehe `config/users.yaml`):
 
 | Benutzer   | Passwort      | Gruppen                  |
@@ -145,8 +160,9 @@ Geheimnisse (API-Keys, JWT-Secret) kommen **nur** aus Umgebungsvariablen – sie
 |---------|-----------------------|-----------------------------------------------|
 | POST    | `/api/auth/login`     | Login, liefert JWT (entfällt im Privat-Modus) |
 | GET     | `/api/auth/me`        | Eigene Rollen/Gruppen                         |
-| POST    | `/api/chat`           | Frage stellen → Antwort + Quellen             |
+| POST    | `/api/chat`           | Frage stellen (+ Verlauf) → Antwort + Quellen |
 | GET     | `/api/documents/search?q=` | Reine Dokumentsuche (ohne LLM)           |
+| GET     | `/api/documents/file?name=` | Originaldatei einer Quelle (RBAC-geprüft) |
 | POST    | `/api/admin/reindex`  | Index neu aufbauen (Rolle `admin`)            |
 | GET     | `/api/health`         | Statusprüfung                                 |
 

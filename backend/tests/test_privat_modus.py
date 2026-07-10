@@ -54,6 +54,6 @@ def test_documents_path_umgebungsvariable(tmp_path, monkeypatch):
     get_settings.cache_clear()
     try:
         settings = get_settings()
-        assert settings.tenant.dokumente_verzeichnis == eigener_ordner
+        assert settings.tenant.dokumente_verzeichnisse == [eigener_ordner]
     finally:
         get_settings.cache_clear()

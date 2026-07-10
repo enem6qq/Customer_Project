@@ -84,6 +84,62 @@ def test_ansprechpartner_wird_gefunden(client):
     assert any(a["bereich"] == "IT" for a in partner)
 
 
+def test_quelle_enthaelt_pfad(client):
+    headers = login(client, "admin", "admin123")
+    r = client.post("/api/chat", json={"frage": "Wie hoch ist das Budget 2026?"}, headers=headers)
+    quelle = r.json()["quellen"][0]
+    assert quelle["pfad"].endswith("budgetplanung_2026.md")
+
+
+def test_dokument_datei_mit_berechtigung(client):
+    headers = login(client, "admin", "admin123")
+    r = client.get(
+        "/api/documents/file",
+        params={"name": "finanzen/budgetplanung_2026.md"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert "42,5" in r.text
+
+
+def test_dokument_datei_ohne_berechtigung_verboten(client):
+    """RBAC gilt auch für den Datei-Abruf: gast darf kein Finanzdokument laden."""
+    headers = login(client, "gast", "gast123")
+    r = client.get(
+        "/api/documents/file",
+        params={"name": "finanzen/budgetplanung_2026.md"},
+        headers=headers,
+    )
+    assert r.status_code == 403
+
+
+def test_dokument_datei_nur_indizierte(client):
+    """Nur indizierte Dokumente sind abrufbar – kein Path-Traversal möglich."""
+    headers = login(client, "admin", "admin123")
+    r = client.get(
+        "/api/documents/file",
+        params={"name": "../../config/users.yaml"},
+        headers=headers,
+    )
+    assert r.status_code == 404
+
+
+def test_chat_mit_verlauf(client):
+    headers = login(client, "gast", "gast123")
+    r = client.post(
+        "/api/chat",
+        json={
+            "frage": "Und wie sind die Öffnungszeiten?",
+            "verlauf": [
+                {"rolle": "nutzer", "text": "Wo ist das Rathaus?"},
+                {"rolle": "bot", "text": "Am Marktplatz."},
+            ],
+        },
+        headers=headers,
+    )
+    assert r.status_code == 200
+
+
 def test_reindex_nur_fuer_admin(client):
     headers = login(client, "gast", "gast123")
     assert client.post("/api/admin/reindex", headers=headers).status_code == 403

@@ -27,6 +27,10 @@ FRONTEND_DIR = REPO_ROOT / "frontend"
 class AppState:
     retriever: Retriever
     llm: LLMProvider
+    # Anzeigename -> (absoluter Pfad, Zugriffsgruppe). Nur hierüber sind
+    # Dateien abrufbar – kein direkter Dateisystemzugriff über die API,
+    # dadurch weder Path-Traversal möglich noch Zugriff an RBAC vorbei.
+    dokumente: dict[str, tuple[str, str]] = {}
 
 
 state = AppState()
@@ -34,11 +38,12 @@ state = AppState()
 
 def _reindex(settings: Settings) -> int:
     chunks = lade_dokumente(
-        settings.tenant.dokumente_verzeichnis,
+        settings.tenant.dokumente_verzeichnisse,
         chunk_size=settings.tenant.retrieval.chunk_size,
         overlap=settings.tenant.retrieval.chunk_overlap,
     )
     state.retriever.index(chunks)
+    state.dokumente = {c.dokument: (c.pfad_absolut, c.gruppe) for c in chunks}
     return len(chunks)
 
 
@@ -114,10 +119,17 @@ class Quelle(BaseModel):
     gruppe: str
     score: float
     auszug: str
+    pfad: str
+
+
+class VerlaufNachricht(BaseModel):
+    rolle: str  # "nutzer" oder "bot"
+    text: str
 
 
 class ChatRequest(BaseModel):
     frage: str
+    verlauf: list[VerlaufNachricht] = []
 
 
 class ChatResponse(BaseModel):
@@ -146,7 +158,9 @@ def chat(
     if not frage:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Frage darf nicht leer sein")
     treffer = state.retriever.suche(frage, user, top_k=settings.tenant.retrieval.top_k)
-    antwort = state.llm.antworte(frage, treffer, settings.tenant.unternehmen.name)
+    # Nur die letzten Nachrichten mitgeben – hält den Prompt klein.
+    verlauf = [v.model_dump() for v in body.verlauf[-6:]]
+    antwort = state.llm.antworte(frage, treffer, settings.tenant.unternehmen.name, verlauf)
     quellen = [
         Quelle(
             dokument=t.chunk.dokument,
@@ -154,6 +168,7 @@ def chat(
             gruppe=t.chunk.gruppe,
             score=round(t.score, 3),
             auszug=(t.chunk.text[:300] + " …") if len(t.chunk.text) > 300 else t.chunk.text,
+            pfad=t.chunk.pfad_absolut,
         )
         for t in treffer
     ]
@@ -183,6 +198,28 @@ def dokumentsuche(
             for t in treffer
         ]
     }
+
+
+@app.get("/api/documents/file")
+def dokument_datei(
+    name: str,
+    user: User = Depends(get_current_user),
+):
+    """Liefert die Originaldatei eines indizierten Dokuments (Quellen-Klick).
+
+    Abrufbar sind ausschließlich indizierte Dokumente über ihren Anzeigenamen –
+    und nur, wenn der Benutzer die Zugriffsgruppe des Dokuments sehen darf.
+    """
+    eintrag = state.dokumente.get(name)
+    if eintrag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dokument nicht im Index")
+    pfad, gruppe = eintrag
+    if not user.darf_gruppe(gruppe):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Kein Zugriff auf dieses Dokument")
+    datei = Path(pfad)
+    if not datei.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Datei existiert nicht mehr")
+    return FileResponse(datei, filename=datei.name, content_disposition_type="inline")
 
 
 # ---------------------------------------------------------------- Admin & Status

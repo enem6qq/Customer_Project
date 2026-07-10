@@ -29,7 +29,13 @@
   .msg.bot  { background: var(--card); align-self: flex-start; max-width: 95%; }
   .quellen { margin-top: 0.6rem; font-size: 0.82rem; color: var(--muted); }
   .quellen b { color: var(--text); }
-  .quelle { border-top: 1px dashed var(--border); padding-top: 0.4rem; margin-top: 0.4rem; }
+  .quelle { border-top: 1px dashed var(--border); padding-top: 0.4rem; margin-top: 0.4rem;
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .quelle a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .quelle a:hover { text-decoration: underline; }
+  .quelle button.klein { background: transparent; color: var(--accent);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 0.1rem 0.5rem; font-size: 0.78rem; }
   .kontakt { margin-top: 0.5rem; font-size: 0.85rem; background: var(--accent-soft);
              border-radius: 8px; padding: 0.5rem 0.7rem; }
   footer { background: var(--card); border-top: 1px solid var(--border); padding: 0.9rem 1.2rem; }
@@ -139,6 +145,43 @@ $("loginForm").addEventListener("submit", async (ev) => {
 
 $("logout").addEventListener("click", () => { speicherLeeren(); location.reload(); });
 
+// Gesprächsverlauf für Rückfragen ("und wer ist dafür zuständig?").
+// Wird mit jeder Frage an den Server geschickt; ausgewertet wird er von
+// LLM-Providern (Ollama / EU-Endpunkt), der extraktive Modus ignoriert ihn.
+const verlauf = [];
+
+async function oeffneDokument(name, titel) {
+  try {
+    const r = await fetch("/api/documents/file?name=" + encodeURIComponent(name),
+                          { headers: authHeaders() });
+    if (!r.ok) { alert("Dokument konnte nicht geladen werden (" + r.status + ")."); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    // PDF/Text zeigt der Browser direkt an; Office-Dateien werden heruntergeladen.
+    const endung = name.split(".").pop().toLowerCase();
+    if (["pdf", "txt", "md"].includes(endung)) {
+      window.open(url, "_blank");
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name.split("/").pop();
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    alert("Fehler beim Öffnen: " + e.message);
+  }
+}
+
+function kopierePfad(pfad, knopf) {
+  const ok = () => { knopf.textContent = "✓ kopiert"; setTimeout(() => knopf.textContent = "Pfad kopieren", 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(pfad).then(ok).catch(() => window.prompt("Pfad manuell kopieren:", pfad));
+  } else {
+    window.prompt("Pfad manuell kopieren:", pfad);
+  }
+}
+
 function nachricht(text, wer) {
   const div = document.createElement("div");
   div.className = "msg " + wer;
@@ -159,19 +202,33 @@ $("chatForm").addEventListener("submit", async (ev) => {
     const r = await fetch("/api/chat", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-      body: JSON.stringify({ frage }),
+      body: JSON.stringify({ frage, verlauf }),
     });
     if (r.status === 401) { speicherLeeren(); location.reload(); return; }
     const d = await r.json();
     laden.textContent = d.antwort;
+    verlauf.push({ rolle: "nutzer", text: frage });
+    verlauf.push({ rolle: "bot", text: d.antwort });
     if (d.quellen && d.quellen.length) {
       const q = document.createElement("div");
       q.className = "quellen";
-      q.innerHTML = "<b>Quellen:</b>";
+      q.innerHTML = "<b>Quellen (anklicken zum Öffnen):</b>";
       for (const s of d.quellen) {
         const e = document.createElement("div");
         e.className = "quelle";
-        e.textContent = s.titel + " (" + s.dokument + ", Gruppe: " + s.gruppe + ")";
+        const link = document.createElement("a");
+        link.href = "#";
+        link.textContent = "📄 " + s.titel;
+        link.title = s.dokument;
+        link.addEventListener("click", (ev2) => { ev2.preventDefault(); oeffneDokument(s.dokument, s.titel); });
+        const info = document.createElement("span");
+        info.textContent = "(" + s.dokument + " · Gruppe: " + s.gruppe + ")";
+        const knopf = document.createElement("button");
+        knopf.type = "button";
+        knopf.className = "klein";
+        knopf.textContent = "Pfad kopieren";
+        knopf.addEventListener("click", () => kopierePfad(s.pfad, knopf));
+        e.append(link, info, knopf);
         q.appendChild(e);
       }
       laden.appendChild(q);

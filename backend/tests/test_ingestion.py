@@ -27,3 +27,18 @@ def test_gruppe_aus_ordnername(tmp_path):
     gruppen = {c.dokument: c.gruppe for c in chunks}
     assert gruppen["personal/a.md"] == "personal"
     assert gruppen["b.md"] == "allgemein"
+    # Absoluter Pfad zur Originaldatei wird mitgeführt (Quellen-Klick)
+    assert all(Path(c.pfad_absolut).is_file() for c in chunks)
+
+
+def test_mehrere_ablageorte(tmp_path):
+    """Mehrere Ordner werden gemeinsam indiziert; Namen bleiben eindeutig."""
+    ablage_a = tmp_path / "Projekte"
+    ablage_b = tmp_path / "Vertraege"
+    ablage_a.mkdir()
+    ablage_b.mkdir()
+    (ablage_a / "notiz.md").write_text("Projektnotiz", encoding="utf-8")
+    (ablage_b / "notiz.md").write_text("Vertragsnotiz", encoding="utf-8")
+    chunks = lade_dokumente([ablage_a, ablage_b])
+    namen = sorted(c.dokument for c in chunks)
+    assert namen == ["Projekte/notiz.md", "Vertraege/notiz.md"]

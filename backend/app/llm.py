@@ -40,15 +40,36 @@ def baue_kontext(treffer: list[Treffer]) -> str:
     return "\n\n".join(teile)
 
 
+def baue_verlauf_text(verlauf: list[dict] | None) -> str:
+    """Bisherigen Gesprächsverlauf als Text (für Prompt-basierte Provider)."""
+    if not verlauf:
+        return ""
+    zeilen = []
+    for eintrag in verlauf:
+        wer = "Nutzer" if eintrag.get("rolle") == "nutzer" else "Assistent"
+        zeilen.append(f"{wer}: {eintrag.get('text', '')}")
+    return "--- Bisheriger Gesprächsverlauf ---\n" + "\n".join(zeilen) + "\n\n"
+
+
 class LLMProvider(ABC):
     @abstractmethod
-    def antworte(self, frage: str, treffer: list[Treffer], unternehmen: str) -> str: ...
+    def antworte(
+        self,
+        frage: str,
+        treffer: list[Treffer],
+        unternehmen: str,
+        verlauf: list[dict] | None = None,
+    ) -> str: ...
 
 
 class ExtractiveProvider(LLMProvider):
-    """Antwort ohne LLM: die besten Fundstellen, sauber formatiert."""
+    """Antwort ohne LLM: die besten Fundstellen, sauber formatiert.
 
-    def antworte(self, frage: str, treffer: list[Treffer], unternehmen: str) -> str:
+    Gesprächsverlauf kann hier nicht berücksichtigt werden – für echte
+    Dialoge einen LLM-Provider (ollama / openai_compatible) konfigurieren.
+    """
+
+    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
         if not treffer:
             return (
                 "Dazu habe ich in der Wissensdatenbank nichts gefunden. "
@@ -72,10 +93,12 @@ class OllamaProvider(LLMProvider):
         self.base_url = base_url.rstrip("/")
         self.model = model
 
-    def antworte(self, frage: str, treffer: list[Treffer], unternehmen: str) -> str:
+    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
         prompt = (
             SYSTEM_PROMPT.format(unternehmen=unternehmen)
-            + "\n\n--- Dokumentauszüge ---\n"
+            + "\n\n"
+            + baue_verlauf_text(verlauf)
+            + "--- Dokumentauszüge ---\n"
             + baue_kontext(treffer)
             + f"\n\n--- Frage ---\n{frage}"
         )
@@ -98,25 +121,25 @@ class OpenAICompatibleProvider(LLMProvider):
         self.model = model
         self.api_key = os.environ.get(api_key_env, "")
 
-    def antworte(self, frage: str, treffer: list[Treffer], unternehmen: str) -> str:
+    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        messages = [{"role": "system", "content": SYSTEM_PROMPT.format(unternehmen=unternehmen)}]
+        for eintrag in verlauf or []:
+            rolle = "user" if eintrag.get("rolle") == "nutzer" else "assistant"
+            messages.append({"role": rolle, "content": eintrag.get("text", "")})
+        messages.append(
+            {
+                "role": "user",
+                "content": "--- Dokumentauszüge ---\n"
+                + baue_kontext(treffer)
+                + f"\n\n--- Frage ---\n{frage}",
+            }
+        )
         try:
             response = httpx.post(
                 f"{self.base_url}/chat/completions",
                 headers=headers,
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT.format(unternehmen=unternehmen)},
-                        {
-                            "role": "user",
-                            "content": "--- Dokumentauszüge ---\n"
-                            + baue_kontext(treffer)
-                            + f"\n\n--- Frage ---\n{frage}",
-                        },
-                    ],
-                    "temperature": 0.2,
-                },
+                json={"model": self.model, "messages": messages, "temperature": 0.2},
                 timeout=120,
             )
             response.raise_for_status()

@@ -31,6 +31,10 @@ retrieval:
 
 # Hier den eigenen Ordner eintragen (oder per DOCUMENTS_PATH überschreiben).
 # Unterordner werden komplett durchsucht (.pdf, .docx, .txt, .md).
+# Auch mehrere Ordner möglich (Windows-Pfade mit / schreiben):
+#   dokumente_pfad:
+#     - "C:/Users/DeinName/Dokumente"
+#     - "C:/Ablage/Vertraege"
 dokumente_pfad: "data/documents"
 
 ansprechpartner: []
