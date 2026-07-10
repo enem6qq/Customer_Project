@@ -15,12 +15,18 @@ if [ "${1:-}" = "privat" ]; then
 fi
 
 cd backend
-if [ ! -d .venv ]; then
-  echo ">> Erstelle virtuelle Umgebung und installiere Abhängigkeiten (einmalig) ..."
+
+if [ ! -x .venv/bin/python ]; then
+  echo ">> Erstelle virtuelle Umgebung (einmalig) ..."
   python3 -m venv .venv
-  .venv/bin/pip install --quiet --upgrade pip
-  .venv/bin/pip install --quiet -r requirements.txt
+fi
+
+# Prüfung auf uvicorn statt nur auf den .venv-Ordner: so wird eine früher
+# abgebrochene Installation automatisch repariert.
+if [ ! -x .venv/bin/uvicorn ]; then
+  echo ">> Installiere Abhängigkeiten (einmalig, 1-2 Minuten) ..."
+  .venv/bin/python -m pip install --quiet -r requirements.txt
 fi
 
 echo ">> Starte Wissens-Chatbot auf http://localhost:8000"
-exec .venv/bin/uvicorn app.main:app --port 8000
+exec .venv/bin/python -m uvicorn app.main:app --port 8000
