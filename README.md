@@ -65,6 +65,12 @@ Dateiablagen verstreut liegt und Dokumente mangels Auffindbarkeit doppelt erstel
 Voraussetzung: Python 3.11+ ([python.org](https://www.python.org/downloads/),
 bei Windows im Installer „Add python to PATH" anhaken).
 
+> **Windows-Hinweis:** Das Projekt in einen **kurzen Pfad** legen, z. B.
+> `C:\Projekte\chatbot` – nicht tief verschachtelt auf dem Desktop. Windows
+> begrenzt Pfade auf 260 Zeichen; bei zu langen Pfaden bricht die Installation
+> mit „No such file or directory" ab. Alternativ
+> [Windows Long Paths aktivieren](https://pip.pypa.io/warnings/enable-long-paths).
+
 ```bash
 # Linux / macOS                 # Windows (Eingabeaufforderung)
 ./start.sh                      start.bat
