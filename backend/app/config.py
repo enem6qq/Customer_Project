@@ -78,6 +78,8 @@ class TenantConfig(BaseModel):
     # gemeinsam indiziert.
     dokumente_pfad: str | list[str] = "data/documents"
     ansprechpartner: list[Ansprechpartner] = Field(default_factory=list)
+    # Klickbare Vorschläge unter der Begrüßung im Chat.
+    beispiel_fragen: list[str] = Field(default_factory=list)
 
     @property
     def dokumente_verzeichnisse(self) -> list[Path]:

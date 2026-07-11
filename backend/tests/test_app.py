@@ -33,6 +33,26 @@ def test_health(client):
     body = r.json()
     assert body["status"] == "ok"
     assert body["chunks"] > 0
+    assert len(body["beispiel_fragen"]) > 0
+
+
+def test_admin_stats(client):
+    headers = login(client, "gast", "gast123")
+    assert client.get("/api/admin/stats", headers=headers).status_code == 403
+
+    headers = login(client, "admin", "admin123")
+    r = client.get("/api/admin/stats", headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["dokumente"] >= 4
+    assert "finanzen" in body["gruppen"]
+    assert body["feedback"].keys() == {"gut", "schlecht"}
+
+
+def test_admin_seite_wird_ausgeliefert(client):
+    r = client.get("/admin")
+    assert r.status_code == 200
+    assert "Admin-Dashboard" in r.text
 
 
 def test_login_falsches_passwort(client):

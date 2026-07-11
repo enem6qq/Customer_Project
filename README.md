@@ -42,8 +42,10 @@ Dateiablagen verstreut liegt und Dokumente mangels Auffindbarkeit doppelt erstel
                     └──────────────────────────────────────────────┘
 ```
 
-- **Ingestion:** liest Dokumente aus `data/documents/<gruppe>/...`. Der oberste
+- **Ingestion:** liest Dokumente aus einem oder mehreren Ablageorten. Der oberste
   Ordnername ist die Zugriffsgruppe (z. B. `allgemein`, `personal`, `finanzen`).
+  Unterstützte Formate: **PDF, Word (.docx), PowerPoint (.pptx, inkl. Notizen),
+  Excel (.xlsx), CSV, HTML, Markdown, Text**.
 - **Retrieval:** Standard ist BM25 (rein Python, läuft überall sofort).
   Optional **Hybrid-Suche** (BM25 + semantische Embeddings mit einem lokalen,
   mehrsprachigen Modell): findet auch Umschreibungen wie „freie Tage" →
@@ -93,7 +95,8 @@ start.bat privat
 ```
 
 Der Chatbot indiziert dann den angegebenen Ordner (inkl. Unterordner;
-`.pdf`, `.docx`, `.txt`, `.md`) und ist sofort ohne Anmeldung nutzbar.
+`.pdf`, `.docx`, `.pptx`, `.xlsx`, `.csv`, `.html`, `.txt`, `.md`)
+und ist sofort ohne Anmeldung nutzbar.
 Alle Einstellungen dazu: `config/tenant.privat.yaml`.
 **Es verlässt dabei nichts deinen Rechner** – Indizierung und Suche laufen
 komplett lokal.
@@ -154,6 +157,14 @@ erzeugt werden.
 **Feedback-Auswertung:** Jede Antwort hat 👍/👎-Buttons. Die Bewertungen
 landen in `data/feedback.jsonl` (nicht im Git) und sind für Admins unter
 `/api/admin/feedback` abrufbar – so siehst du, wo die Wissensbasis Lücken hat.
+
+**Admin-Dashboard:** Unter **http://localhost:8000/admin** (Link erscheint im
+Chat-Kopf für Admins) gibt es eine Übersichtsseite: Dokument-/Index-Status,
+Zugriffsgruppen, Ablageorte, Feedback-Auswertung und ein Reindex-Button.
+
+**Oberfläche:** Beispielfragen als klickbare Chips (konfigurierbar über
+`beispiel_fragen` in der tenant.yaml), Hell-/Dunkel-Modus (🌓 im Kopf),
+formatierte Antworten (Fett/Listen aus LLM-Antworten werden dargestellt).
 
 ## Konfiguration
 

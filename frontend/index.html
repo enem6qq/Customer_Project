@@ -10,6 +10,16 @@
     --bg: #f4f6f8; --card: #ffffff; --border: #dde3ea;
     --text: #1c2733; --muted: #5b6b7c; --accent: #0f5cbf; --accent-soft: #e8f0fb;
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181d; --card: #1e242b; --border: #323b45;
+      --text: #e6ebf0; --muted: #97a4b1; --accent: #5c9dee; --accent-soft: #223349;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181d; --card: #1e242b; --border: #323b45;
+    --text: #e6ebf0; --muted: #97a4b1; --accent: #5c9dee; --accent-soft: #223349;
+  }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
          background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
@@ -41,6 +51,16 @@
   .feedback button { background: transparent; border: 1px solid var(--border);
     border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.9rem; cursor: pointer; }
   .feedback button:hover { background: var(--accent-soft); }
+  .msg code { background: var(--accent-soft); border-radius: 4px; padding: 0 0.25rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; align-self: flex-start; }
+  .chips button { background: var(--card); color: var(--accent);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 0.4rem 0.9rem; font-size: 0.88rem; }
+  .chips button:hover { background: var(--accent-soft); }
+  .punkte::after { content: ""; animation: punkte 1.2s steps(4) infinite; }
+  @keyframes punkte { 0% { content: ""; } 25% { content: "."; }
+    50% { content: ".."; } 75% { content: "..."; } }
+  a.kopf-link { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
   .kontakt { margin-top: 0.5rem; font-size: 0.85rem; background: var(--accent-soft);
              border-radius: 8px; padding: 0.5rem 0.7rem; }
   footer { background: var(--card); border-top: 1px solid var(--border); padding: 0.9rem 1.2rem; }
@@ -78,6 +98,8 @@
   <h1 id="firmenname">Wissens-Chatbot</h1>
   <div class="spacer"></div>
   <span class="user" id="userInfo"></span>
+  <a class="kopf-link" id="adminLink" href="/admin" hidden>Admin</a>
+  <button class="secondary" id="theme" type="button" title="Hell/Dunkel umschalten">🌓</button>
   <button class="secondary" id="logout">Abmelden</button>
 </header>
 
@@ -111,7 +133,26 @@ let token = speicherLies("token") || "";
 
 const $ = (id) => document.getElementById(id);
 
-function zeigeApp(anzeigename, gruppen) {
+// ---------- Hell/Dunkel ----------
+const gespeichertesTheme = speicherLies("theme");
+if (gespeichertesTheme) document.documentElement.dataset.theme = gespeichertesTheme;
+
+// ---------- Sichere Mini-Markdown-Darstellung für Bot-Antworten ----------
+// Erst HTML entschärfen (kein XSS), dann **fett**, `code`, Überschriften
+// und Aufzählungen hübsch machen.
+function mdZuHtml(text) {
+  let t = String(text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  t = t.replace(/^#{1,4} (.*)$/gm, "<strong>$1</strong>");
+  t = t.replace(/^[ \t]*[-*] (.*)$/gm, "• $1");
+  return t;
+}
+
+let beispielFragen = [];
+
+function zeigeApp(anzeigename, gruppen, rollen) {
   $("login").hidden = true;
   $("kopf").hidden = false;
   $("verlaufContainer").hidden = false;
@@ -119,6 +160,28 @@ function zeigeApp(anzeigename, gruppen) {
   $("userInfo").textContent = gruppen.length
     ? anzeigename + " · Gruppen: " + gruppen.join(", ")
     : anzeigename;
+  if ((rollen || []).includes("admin") || gruppen.includes("*")) {
+    $("adminLink").hidden = false;
+  }
+  zeigeChips();
+}
+
+function zeigeChips() {
+  if (!beispielFragen.length || $("chips")) return;
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  chips.id = "chips";
+  for (const frage of beispielFragen) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = frage;
+    b.addEventListener("click", () => {
+      $("frage").value = frage;
+      $("chatForm").requestSubmit();
+    });
+    chips.appendChild(b);
+  }
+  $("verlauf").appendChild(chips);
 }
 
 function authHeaders() {
@@ -140,7 +203,8 @@ $("loginForm").addEventListener("submit", async (ev) => {
     speicherSchreib("token", token);
     speicherSchreib("anzeigename", d.anzeigename);
     speicherSchreib("gruppen", JSON.stringify(d.gruppen));
-    zeigeApp(d.anzeigename, d.gruppen);
+    speicherSchreib("rollen", JSON.stringify(d.rollen));
+    zeigeApp(d.anzeigename, d.gruppen, d.rollen);
   } catch (e) {
     // Fehler sichtbar machen statt still zu scheitern
     console.error("Anmeldefehler:", e);
@@ -149,6 +213,14 @@ $("loginForm").addEventListener("submit", async (ev) => {
 });
 
 $("logout").addEventListener("click", () => { speicherLeeren(); location.reload(); });
+
+$("theme").addEventListener("click", () => {
+  const dunkel = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const aktuell = document.documentElement.dataset.theme || (dunkel ? "dark" : "light");
+  const neu = aktuell === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = neu;
+  speicherSchreib("theme", neu);
+});
 
 // Gesprächsverlauf für Rückfragen ("und wer ist dafür zuständig?").
 // Wird mit jeder Frage an den Server geschickt; ausgewertet wird er von
@@ -201,8 +273,11 @@ $("chatForm").addEventListener("submit", async (ev) => {
   const frage = $("frage").value.trim();
   if (!frage) return;
   $("frage").value = "";
+  const chips = $("chips");
+  if (chips) chips.remove();
   nachricht(frage, "user");
-  const laden = nachricht("Suche in der Wissensdatenbank …", "bot");
+  const laden = nachricht("", "bot");
+  laden.innerHTML = 'Suche in der Wissensdatenbank<span class="punkte"></span>';
   try {
     const r = await fetch("/api/chat", {
       method: "POST",
@@ -211,7 +286,7 @@ $("chatForm").addEventListener("submit", async (ev) => {
     });
     if (r.status === 401) { speicherLeeren(); location.reload(); return; }
     const d = await r.json();
-    laden.textContent = d.antwort;
+    laden.innerHTML = mdZuHtml(d.antwort);
     verlauf.push({ rolle: "nutzer", text: frage });
     verlauf.push({ rolle: "bot", text: d.antwort });
     if (d.quellen && d.quellen.length) {
@@ -280,16 +355,20 @@ $("chatForm").addEventListener("submit", async (ev) => {
     const r = await fetch("/api/health");
     const d = await r.json();
     $("firmenname").textContent = "Wissens-Chatbot – " + d.unternehmen;
+    beispielFragen = d.beispiel_fragen || [];
     if (d.modus === "privat") {
       $("logout").hidden = true;
-      zeigeApp("Privater Modus – alle eigenen Dokumente (" + (d.chunks ?? 0) + " Abschnitte indiziert)", []);
+      zeigeApp("Privater Modus – alle eigenen Dokumente (" + (d.chunks ?? 0) + " Abschnitte indiziert)", [], ["admin"]);
       return;
     }
   } catch (e) { /* Server noch nicht erreichbar – Login anzeigen */ }
   if (token) {
-    let gruppen = [];
-    try { gruppen = JSON.parse(speicherLies("gruppen") || "[]"); } catch (e) {}
-    zeigeApp(speicherLies("anzeigename") || "", gruppen);
+    let gruppen = [], rollen = [];
+    try {
+      gruppen = JSON.parse(speicherLies("gruppen") || "[]");
+      rollen = JSON.parse(speicherLies("rollen") || "[]");
+    } catch (e) {}
+    zeigeApp(speicherLies("anzeigename") || "", gruppen, rollen);
   }
 })();
 </script>

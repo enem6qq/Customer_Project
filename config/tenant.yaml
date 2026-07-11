@@ -27,6 +27,12 @@ retrieval:
 # Ablageverzeichnis. Der oberste Ordnername = Zugriffsgruppe (RBAC).
 dokumente_pfad: "data/documents"
 
+# Klickbare Beispielfragen unter der Begrüßung im Chat.
+beispiel_fragen:
+  - "Wie beantrage ich Urlaub?"
+  - "Wie melde ich eine IT-Störung?"
+  - "Was wird bei einer Dienstreise erstattet?"
+
 # Zuständigkeiten – werden bei passenden Fragen mit angezeigt.
 ansprechpartner:
   - bereich: "Urlaub"
