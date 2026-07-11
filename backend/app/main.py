@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -340,6 +341,38 @@ def health(settings: Settings = Depends(get_settings)):
         "llm_provider": settings.tenant.llm.provider,
         "retrieval_provider": settings.tenant.retrieval.provider,
         "chunks": getattr(state.retriever, "anzahl_chunks", None),
+        "beispiel_fragen": settings.tenant.beispiel_fragen,
+    }
+
+
+@app.get("/api/admin/stats")
+def admin_stats(
+    _admin: User = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Übersicht für das Admin-Dashboard."""
+    gruppen = Counter(gruppe for _, gruppe in state.dokumente.values())
+    feedback_zaehler = Counter()
+    if settings.feedback_datei.exists():
+        for zeile in settings.feedback_datei.read_text(encoding="utf-8").splitlines():
+            try:
+                feedback_zaehler[json.loads(zeile).get("bewertung", "?")] += 1
+            except json.JSONDecodeError:
+                continue
+    return {
+        "unternehmen": settings.tenant.unternehmen.name,
+        "modus": settings.tenant.modus,
+        "llm_provider": settings.tenant.llm.provider,
+        "retrieval_provider": settings.tenant.retrieval.provider,
+        "auto_reindex_sekunden": settings.tenant.auto_reindex_sekunden,
+        "dokumente": len(state.dokumente),
+        "chunks": getattr(state.retriever, "anzahl_chunks", None),
+        "gruppen": dict(gruppen),
+        "ablageorte": [str(p) for p in settings.tenant.dokumente_verzeichnisse],
+        "feedback": {
+            "gut": feedback_zaehler.get("gut", 0),
+            "schlecht": feedback_zaehler.get("schlecht", 0),
+        },
     }
 
 
@@ -348,6 +381,11 @@ def health(settings: Settings = Depends(get_settings)):
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(FRONTEND_DIR / "index.html")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_seite():
+    return FileResponse(FRONTEND_DIR / "admin.html")
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")

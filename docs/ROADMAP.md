@@ -14,8 +14,13 @@
 - ✅ **Privat-Modus:** lokale Einzelnutzung ohne Login (`./start.sh privat`),
   eigener Dokumentenordner per `DOCUMENTS_PATH`
 - ✅ Ollama-Anbindung mit automatischem Fallback (per Test abgesichert)
-- Lokales LLM in der Praxis erproben (z. B. `llama3.1:8b` oder ein deutsches Modell)
-- Dokument-Download/-Vorschau direkt aus der Quellenliste
+- ✅ Lokales LLM in der Praxis erprobt (Ollama, `llama3.1:8b`)
+- ✅ Dokument-Download/-Vorschau direkt aus der Quellenliste (+ Pfad kopieren)
+- ✅ Gesprächsverlauf (Rückfragen im Kontext)
+- ✅ Office-Formate: PowerPoint, Excel, CSV, HTML (zusätzlich zu PDF/Word/Text)
+- ✅ Automatischer Reindex (Datei-Wächter), Feedback-Buttons 👍/👎
+- ✅ Admin-Dashboard (/admin): Status, Feedback-Auswertung, Reindex
+- ✅ UI: Beispielfragen-Chips, Dark Mode, formatierte Antworten
 - Echte Kundendokumente eines Pilotpartners einspielen (anonymisiert testen)
 
 ## Phase 2 – Pilotkunde (4–8 Wochen)

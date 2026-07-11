@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wissens-Chatbot – Admin</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --border: #dde3ea;
+    --text: #1c2733; --muted: #5b6b7c; --accent: #0f5cbf; --accent-soft: #e8f0fb;
+    --gut: #1a7f37; --schlecht: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181d; --card: #1e242b; --border: #323b45;
+      --text: #e6ebf0; --muted: #97a4b1; --accent: #5c9dee; --accent-soft: #223349;
+      --gut: #4ac26b; --schlecht: #ff6b61;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181d; --card: #1e242b; --border: #323b45;
+    --text: #e6ebf0; --muted: #97a4b1; --accent: #5c9dee; --accent-soft: #223349;
+    --gut: #4ac26b; --schlecht: #ff6b61;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); }
+  header { background: var(--card); border-bottom: 1px solid var(--border);
+           padding: 0.8rem 1.2rem; display: flex; align-items: center; gap: 1rem; }
+  header h1 { font-size: 1.05rem; margin: 0; }
+  header a { color: var(--accent); font-size: 0.9rem; text-decoration: none; }
+  main { max-width: 900px; margin: 0 auto; padding: 1.2rem; display: grid; gap: 1rem; }
+  .karte { background: var(--card); border: 1px solid var(--border);
+           border-radius: 12px; padding: 1rem 1.2rem; }
+  .karte h2 { font-size: 0.95rem; margin: 0 0 0.8rem; color: var(--muted);
+              text-transform: uppercase; letter-spacing: 0.04em; }
+  .kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+             gap: 0.8rem; }
+  .kachel { border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem; }
+  .kachel .wert { font-size: 1.5rem; font-weight: 700; }
+  .kachel .label { font-size: 0.8rem; color: var(--muted); }
+  .gut { color: var(--gut); } .schlecht { color: var(--schlecht); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+  th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border);
+           vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+           padding: 0.5rem 1rem; cursor: pointer; }
+  .hinweis { color: var(--muted); font-size: 0.85rem; }
+  #meldung { min-height: 1.2em; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Admin-Dashboard</h1>
+  <a href="/">← zurück zum Chat</a>
+</header>
+<main>
+  <div class="karte" id="statusKarte">
+    <h2>Status</h2>
+    <div class="kacheln" id="kacheln"><span class="hinweis">Lade …</span></div>
+    <p class="hinweis" id="details"></p>
+    <p><button id="reindex" type="button">Jetzt neu indizieren</button> <span id="meldung"></span></p>
+  </div>
+  <div class="karte">
+    <h2>Feedback der Nutzer</h2>
+    <div id="feedbackInhalt"><span class="hinweis">Lade …</span></div>
+  </div>
+</main>
+<script>
+function speicherLies(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+const gespeichertesTheme = speicherLies("theme");
+if (gespeichertesTheme) document.documentElement.dataset.theme = gespeichertesTheme;
+
+const token = speicherLies("token") || "";
+const headers = token ? { "Authorization": "Bearer " + token } : {};
+const $ = (id) => document.getElementById(id);
+
+function kachel(wert, label, klasse) {
+  return '<div class="kachel"><div class="wert ' + (klasse || "") + '">' + wert +
+         '</div><div class="label">' + label + "</div></div>";
+}
+
+async function ladeStats() {
+  const r = await fetch("/api/admin/stats", { headers });
+  if (r.status === 401 || r.status === 403) {
+    document.querySelector("main").innerHTML =
+      '<div class="karte"><p>Kein Zugriff – bitte zuerst im <a href="/">Chat</a> als Administrator anmelden.</p></div>';
+    return false;
+  }
+  const d = await r.json();
+  $("kacheln").innerHTML =
+    kachel(d.dokumente, "Dokumente") +
+    kachel(d.chunks ?? "–", "Abschnitte im Index") +
+    kachel(Object.keys(d.gruppen).length, "Zugriffsgruppen") +
+    kachel(d.feedback.gut, "👍 hilfreich", "gut") +
+    kachel(d.feedback.schlecht, "👎 nicht hilfreich", "schlecht");
+  $("details").textContent =
+    d.unternehmen + " · Modus: " + d.modus + " · Suche: " + d.retrieval_provider +
+    " · KI: " + d.llm_provider +
+    " · Auto-Reindex: " + (d.auto_reindex_sekunden > 0 ? "alle " + d.auto_reindex_sekunden + " s" : "aus") +
+    " · Ablage: " + d.ablageorte.join("  |  ");
+  return true;
+}
+
+async function ladeFeedback() {
+  const r = await fetch("/api/admin/feedback", { headers });
+  if (!r.ok) return;
+  const d = await r.json();
+  if (!d.eintraege.length) {
+    $("feedbackInhalt").innerHTML = '<span class="hinweis">Noch kein Feedback vorhanden.</span>';
+    return;
+  }
+  const zeilen = d.eintraege.slice().reverse().map((e) =>
+    "<tr><td>" + (e.zeit || "").replace("T", " ").replace("+00:00", "") + "</td><td>" +
+    (e.benutzer || "") + "</td><td>" + (e.bewertung === "gut" ? "👍" : "👎") + "</td><td>" +
+    (e.frage || "").replace(/</g, "&lt;") + "</td></tr>").join("");
+  $("feedbackInhalt").innerHTML =
+    "<table><thead><tr><th>Zeit (UTC)</th><th>Benutzer</th><th></th><th>Frage</th></tr></thead><tbody>" +
+    zeilen + "</tbody></table>";
+}
+
+$("reindex").addEventListener("click", async () => {
+  $("meldung").textContent = "Indiziere …";
+  const r = await fetch("/api/admin/reindex", { method: "POST", headers });
+  if (r.ok) {
+    const d = await r.json();
+    $("meldung").textContent = "Fertig – " + d.chunks + " Abschnitte im Index.";
+    ladeStats();
+  } else {
+    $("meldung").textContent = "Fehler (" + r.status + ")";
+  }
+});
+
+(async () => { if (await ladeStats()) ladeFeedback(); })();
+</script>
+</body>
+</html>
