@@ -33,11 +33,13 @@ if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
 
-# Prüfung auf uvicorn statt nur auf den .venv-Ordner: so wird eine früher
-# abgebrochene Installation automatisch repariert.
-if [ ! -x .venv/bin/uvicorn ]; then
-  echo ">> Installiere Abhängigkeiten (einmalig, 1-2 Minuten) ..."
+# Installieren, wenn noch nie installiert oder requirements.txt sich seit der
+# letzten Installation geändert hat – neue Abhängigkeiten kommen so nach
+# einem Update automatisch an.
+if ! cmp -s requirements.txt .venv/req.stamp; then
+  echo ">> Installiere/aktualisiere Abhängigkeiten (1-2 Minuten) ..."
   .venv/bin/python -m pip install --quiet -r requirements.txt
+  cp requirements.txt .venv/req.stamp
 fi
 
 echo ">> Starte Wissens-Chatbot auf http://localhost:8000"

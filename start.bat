@@ -56,10 +56,12 @@ if not exist .venv\Scripts\python.exe (
   )
 )
 
-REM Pruefung auf uvicorn.exe statt nur auf den .venv-Ordner: so wird eine
-REM frueher abgebrochene Installation automatisch repariert.
-if not exist .venv\Scripts\uvicorn.exe (
-  echo ^>^> Installiere Abhaengigkeiten ^(einmalig, 1-2 Minuten^) ...
+REM Installieren, wenn (a) noch nie installiert oder (b) requirements.txt
+REM sich seit der letzten Installation geaendert hat (req.stamp-Vergleich).
+REM So kommen neue Abhaengigkeiten nach einem Update automatisch an.
+fc /b requirements.txt .venv\req.stamp >nul 2>nul
+if errorlevel 1 (
+  echo ^>^> Installiere/aktualisiere Abhaengigkeiten ^(1-2 Minuten^) ...
   .venv\Scripts\python -m pip install --quiet -r requirements.txt
   if errorlevel 1 (
     echo.
@@ -71,6 +73,7 @@ if not exist .venv\Scripts\uvicorn.exe (
     pause
     exit /b 1
   )
+  copy /y requirements.txt .venv\req.stamp >nul
 )
 
 echo ^>^> Starte Wissens-Chatbot auf http://localhost:8000
