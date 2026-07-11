@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -196,6 +196,20 @@ def _passende_ansprechpartner(frage: str, settings: Settings) -> list[dict]:
     ]
 
 
+def _baue_quellen(treffer) -> list[Quelle]:
+    return [
+        Quelle(
+            dokument=t.chunk.dokument,
+            titel=t.chunk.titel,
+            gruppe=t.chunk.gruppe,
+            score=round(t.score, 3),
+            auszug=(t.chunk.text[:300] + " …") if len(t.chunk.text) > 300 else t.chunk.text,
+            pfad=t.chunk.pfad_absolut,
+        )
+        for t in treffer
+    ]
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(
     body: ChatRequest,
@@ -209,22 +223,51 @@ def chat(
     # Nur die letzten Nachrichten mitgeben – hält den Prompt klein.
     verlauf = [v.model_dump() for v in body.verlauf[-6:]]
     antwort = state.llm.antworte(frage, treffer, settings.tenant.unternehmen.name, verlauf)
-    quellen = [
-        Quelle(
-            dokument=t.chunk.dokument,
-            titel=t.chunk.titel,
-            gruppe=t.chunk.gruppe,
-            score=round(t.score, 3),
-            auszug=(t.chunk.text[:300] + " …") if len(t.chunk.text) > 300 else t.chunk.text,
-            pfad=t.chunk.pfad_absolut,
-        )
-        for t in treffer
-    ]
     return ChatResponse(
         antwort=antwort,
-        quellen=quellen,
+        quellen=_baue_quellen(treffer),
         ansprechpartner=_passende_ansprechpartner(frage, settings),
     )
+
+
+@app.post("/api/chat/stream")
+def chat_stream(
+    body: ChatRequest,
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    """Wie /api/chat, aber als NDJSON-Stream: erst ein meta-Ereignis mit
+    Quellen und Ansprechpartnern (die stehen sofort fest), dann die Antwort
+    stückweise als token-Ereignisse, abschließend ende.
+
+    Die Rechteprüfung passiert wie immer VOR der LLM-Anfrage im Retrieval.
+    """
+    frage = body.frage.strip()
+    if not frage:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Frage darf nicht leer sein")
+    treffer = state.retriever.suche(frage, user, top_k=settings.tenant.retrieval.top_k)
+    verlauf = [v.model_dump() for v in body.verlauf[-6:]]
+    unternehmen = settings.tenant.unternehmen.name
+    meta = {
+        "typ": "meta",
+        "quellen": [q.model_dump() for q in _baue_quellen(treffer)],
+        "ansprechpartner": _passende_ansprechpartner(frage, settings),
+    }
+
+    def generator():
+        yield json.dumps(meta, ensure_ascii=False) + "\n"
+        try:
+            for stueck in state.llm.antworte_stream(frage, treffer, unternehmen, verlauf):
+                yield json.dumps({"typ": "token", "text": stueck}, ensure_ascii=False) + "\n"
+        except Exception:
+            logger.exception("Fehler beim Streamen der Antwort")
+            yield json.dumps(
+                {"typ": "token", "text": "Es ist ein Fehler bei der Antworterzeugung aufgetreten."},
+                ensure_ascii=False,
+            ) + "\n"
+        yield json.dumps({"typ": "ende"}) + "\n"
+
+    return StreamingResponse(generator(), media_type="application/x-ndjson")
 
 
 @app.get("/api/documents/search")

@@ -54,6 +54,12 @@ Dateiablagen verstreut liegt und Dokumente mangels Auffindbarkeit doppelt erstel
   `retrieval.provider: "hybrid"` setzen. Das Embedding-Modell
   (`intfloat/multilingual-e5-small`) wird beim ersten Start einmalig
   heruntergeladen und läuft danach komplett lokal auf der CPU.
+  Berechnete Embeddings landen in einer **lokalen Vektor-Datenbank**
+  (SQLite, `data/vektoren.sqlite`): Nach einem Neustart werden nur neue oder
+  geänderte Dokumente neu berechnet – der Start bleibt auch bei großen
+  Ablagen schnell.
+- **Streaming:** Antworten erscheinen Wort für Wort, sobald das LLM liefert –
+  die Quellen stehen sofort, noch bevor die Antwort fertig formuliert ist.
 - **LLM:** Standard ist der **extraktive Modus** (keinerlei LLM nötig – gibt die besten
   Fundstellen strukturiert zurück). Für echte generierte Antworten:
   - `ollama` – lokales LLM auf eigenem Server (empfohlen für maximale Datenhoheit)
@@ -178,6 +184,7 @@ Geheimnisse (API-Keys, JWT-Secret) kommen **nur** aus Umgebungsvariablen – sie
 | POST    | `/api/auth/login`     | Login, liefert JWT (entfällt im Privat-Modus) |
 | GET     | `/api/auth/me`        | Eigene Rollen/Gruppen                         |
 | POST    | `/api/chat`           | Frage stellen (+ Verlauf) → Antwort + Quellen |
+| POST    | `/api/chat/stream`    | Wie `/api/chat`, Antwort als NDJSON-Stream    |
 | GET     | `/api/documents/search?q=` | Reine Dokumentsuche (ohne LLM)           |
 | GET     | `/api/documents/file?name=` | Originaldatei einer Quelle (RBAC-geprüft) |
 | POST    | `/api/feedback`       | 👍/👎-Bewertung einer Antwort speichern        |

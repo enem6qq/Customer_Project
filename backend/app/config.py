@@ -45,6 +45,9 @@ class RetrievalConfig(BaseModel):
     provider: str = "bm25"
     # Mehrsprachiges Modell, läuft lokal auf CPU – gut für deutsche Fragen.
     embedding_model: str = "intfloat/multilingual-e5-small"
+    # Persistente Vektor-Datenbank (SQLite) für Embeddings: Beim Neustart
+    # werden nur neue/geänderte Texte neu berechnet. Leer = deaktiviert.
+    vektor_db_pfad: str = "data/vektoren.sqlite"
     chunk_size: int = 800
     chunk_overlap: int = 150
     top_k: int = 5

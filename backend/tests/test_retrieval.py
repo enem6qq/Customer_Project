@@ -96,3 +96,47 @@ def test_erstelle_retriever_hybrid_mit_eigenem_embedder():
 def test_erstelle_retriever_unbekannt():
     with pytest.raises(ValueError):
         erstelle_retriever(RetrievalConfig(provider="quantenglaskugel"))
+
+
+def test_vektor_datenbank_cache(tmp_path):
+    """Zweiter Index-Lauf holt alle Embeddings aus der SQLite-Datenbank."""
+    from app.retrieval import VektorDatenbank
+
+    aufrufe = {"anzahl": 0}
+
+    def zaehlender_embedder(texte):
+        aufrufe["anzahl"] += len(texte)
+        return fake_embedder(texte)
+
+    db_pfad = tmp_path / "vektoren.sqlite"
+
+    r1 = VectorRetriever(zaehlender_embedder, VektorDatenbank(db_pfad, "test-modell"))
+    r1.index(CHUNKS)
+    assert aufrufe["anzahl"] == len(CHUNKS)
+
+    # Neuer Retriever (wie nach Neustart), gleiche Datenbank: 0 neue Berechnungen
+    r2 = VectorRetriever(zaehlender_embedder, VektorDatenbank(db_pfad, "test-modell"))
+    r2.index(CHUNKS)
+    assert aufrufe["anzahl"] == len(CHUNKS)
+
+    # Suche funktioniert mit Vektoren aus der Datenbank
+    treffer = r2.suche("Wie viel Urlaub bekomme ich?", ALLES, top_k=1)
+    assert treffer[0].chunk.titel == "urlaubsregelung"
+
+
+def test_vektor_datenbank_neuer_text_wird_berechnet(tmp_path):
+    from app.retrieval import VektorDatenbank
+
+    aufrufe = {"anzahl": 0}
+
+    def zaehlender_embedder(texte):
+        aufrufe["anzahl"] += len(texte)
+        return fake_embedder(texte)
+
+    datenbank = VektorDatenbank(tmp_path / "v.sqlite", "test-modell")
+    r = VectorRetriever(zaehlender_embedder, datenbank)
+    r.index(CHUNKS)
+    vorher = aufrufe["anzahl"]
+
+    r.index(CHUNKS + [chunk("Ganz neuer Inhalt über Kantinen.", "allgemein", "kantine")])
+    assert aufrufe["anzahl"] == vorher + 1  # nur der neue Chunk wurde berechnet

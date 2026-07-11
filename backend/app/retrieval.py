@@ -14,17 +14,22 @@ Benutzer nicht sehen darf, verlassen diese Schicht nicht.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
+import sqlite3
+import threading
 from abc import ABC, abstractmethod
+from array import array
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from rank_bm25 import BM25Okapi
 
 from .auth import User
-from .config import RetrievalConfig
+from .config import REPO_ROOT, RetrievalConfig
 from .ingestion import Chunk
 
 logger = logging.getLogger(__name__)
@@ -125,22 +130,93 @@ def _normalisiere(vektor: list[float]) -> list[float]:
     return [x / norm for x in vektor] if norm > 0 else vektor
 
 
-class VectorRetriever(Retriever):
-    """Semantische Suche über Kosinus-Ähnlichkeit (In-Memory).
+class VektorDatenbank:
+    """Persistenter Embedding-Speicher (SQLite).
 
-    E5-Modelle erwarten die Präfixe "query: " / "passage: " – die werden hier
-    gesetzt; für andere Embedding-Funktionen sind sie unschädlich.
+    Einmal berechnete Embeddings überleben den Neustart: Beim Reindex werden
+    nur neue oder geänderte Texte durch das Modell geschickt. Schlüssel ist
+    ein Hash aus Modellname + Textinhalt – identische Chunks werden
+    automatisch dedupliziert.
     """
 
-    def __init__(self, embedder: EmbeddingFunktion):
+    def __init__(self, pfad: Path, modell: str):
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        self._modell = modell
+        self._lock = threading.Lock()
+        self._con = sqlite3.connect(str(pfad), check_same_thread=False)
+        self._con.execute(
+            "CREATE TABLE IF NOT EXISTS embeddings ("
+            "schluessel TEXT PRIMARY KEY, vektor BLOB NOT NULL)"
+        )
+        self._con.commit()
+
+    def _schluessel(self, text: str) -> str:
+        return hashlib.sha256(f"{self._modell}|{text}".encode()).hexdigest()
+
+    def hole(self, text: str) -> list[float] | None:
+        with self._lock:
+            zeile = self._con.execute(
+                "SELECT vektor FROM embeddings WHERE schluessel = ?",
+                (self._schluessel(text),),
+            ).fetchone()
+        if zeile is None:
+            return None
+        vektor = array("f")
+        vektor.frombytes(zeile[0])
+        return list(vektor)
+
+    def speichere(self, text: str, vektor: list[float]) -> None:
+        blob = array("f", vektor).tobytes()
+        with self._lock:
+            self._con.execute(
+                "INSERT OR REPLACE INTO embeddings (schluessel, vektor) VALUES (?, ?)",
+                (self._schluessel(text), blob),
+            )
+            self._con.commit()
+
+
+class VectorRetriever(Retriever):
+    """Semantische Suche über Kosinus-Ähnlichkeit.
+
+    E5-Modelle erwarten die Präfixe "query: " / "passage: " – die werden hier
+    gesetzt; für andere Embedding-Funktionen sind sie unschädlich. Mit
+    `datenbank` werden Embeddings persistent zwischengespeichert.
+    """
+
+    def __init__(self, embedder: EmbeddingFunktion, datenbank: VektorDatenbank | None = None):
         self._embedder = embedder
+        self._datenbank = datenbank
         self._chunks: list[Chunk] = []
         self._vektoren: list[list[float]] = []
 
     def index(self, chunks: list[Chunk]) -> None:
         self._chunks = chunks
         texte = [f"passage: {c.titel}\n{c.text}" for c in chunks]
-        self._vektoren = [_normalisiere(v) for v in self._embedder(texte)] if texte else []
+        vektoren: list[list[float] | None] = [None] * len(texte)
+
+        fehlend: list[int] = []
+        if self._datenbank is not None:
+            for i, text in enumerate(texte):
+                vektoren[i] = self._datenbank.hole(text)
+                if vektoren[i] is None:
+                    fehlend.append(i)
+        else:
+            fehlend = list(range(len(texte)))
+
+        if fehlend:
+            neue = self._embedder([texte[i] for i in fehlend])
+            for i, vektor in zip(fehlend, neue):
+                vektoren[i] = vektor
+                if self._datenbank is not None:
+                    self._datenbank.speichere(texte[i], vektor)
+        if self._datenbank is not None and texte:
+            logger.info(
+                "Embeddings: %d aus Vektor-Datenbank, %d neu berechnet",
+                len(texte) - len(fehlend),
+                len(fehlend),
+            )
+
+        self._vektoren = [_normalisiere(v) for v in vektoren]  # type: ignore[arg-type]
 
     def suche(self, frage: str, user: User, top_k: int = 5) -> list[Treffer]:
         if not self._vektoren:
@@ -163,9 +239,9 @@ class HybridRetriever(Retriever):
 
     RRF_K = 60
 
-    def __init__(self, embedder: EmbeddingFunktion):
+    def __init__(self, embedder: EmbeddingFunktion, datenbank: VektorDatenbank | None = None):
         self._bm25 = BM25Retriever()
-        self._vektor = VectorRetriever(embedder)
+        self._vektor = VectorRetriever(embedder, datenbank)
 
     def index(self, chunks: list[Chunk]) -> None:
         self._bm25.index(chunks)
@@ -200,5 +276,13 @@ def erstelle_retriever(
     if config.provider == "bm25":
         return BM25Retriever()
     if config.provider == "hybrid":
-        return HybridRetriever(embedder or _lade_sentence_transformer(config.embedding_model))
+        datenbank = None
+        if config.vektor_db_pfad:
+            pfad = Path(config.vektor_db_pfad)
+            if not pfad.is_absolute():
+                pfad = REPO_ROOT / pfad
+            datenbank = VektorDatenbank(pfad, config.embedding_model)
+        return HybridRetriever(
+            embedder or _lade_sentence_transformer(config.embedding_model), datenbank
+        )
     raise ValueError(f"Unbekannter Retrieval-Provider: {config.provider!r}")

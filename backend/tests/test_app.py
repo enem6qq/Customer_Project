@@ -144,6 +144,45 @@ def test_dokument_datei_nur_indizierte(client):
     assert r.status_code == 404
 
 
+def test_chat_stream(client):
+    import json
+
+    headers = login(client, "gast", "gast123")
+    with client.stream(
+        "POST", "/api/chat/stream",
+        json={"frage": "Wie melde ich eine IT Störung?"},
+        headers=headers,
+    ) as r:
+        assert r.status_code == 200
+        ereignisse = [json.loads(z) for z in r.iter_lines() if z.strip()]
+    assert ereignisse[0]["typ"] == "meta"
+    assert len(ereignisse[0]["quellen"]) > 0
+    tokens = [e for e in ereignisse if e["typ"] == "token"]
+    assert tokens and "Wissensdatenbank" in "".join(t["text"] for t in tokens)
+    assert ereignisse[-1]["typ"] == "ende"
+
+
+def test_chat_stream_rbac(client):
+    """Auch im Stream: gast bekommt keine Finanz-Quellen."""
+    import json
+
+    headers = login(client, "gast", "gast123")
+    with client.stream(
+        "POST", "/api/chat/stream",
+        json={"frage": "Wie hoch ist das Budget 2026?"},
+        headers=headers,
+    ) as r:
+        ereignisse = [json.loads(z) for z in r.iter_lines() if z.strip()]
+    gruppen = {q["gruppe"] for q in ereignisse[0]["quellen"]}
+    assert "finanzen" not in gruppen
+    assert "42,5" not in "".join(e.get("text", "") for e in ereignisse)
+
+
+def test_chat_stream_ohne_token_verboten(client):
+    r = client.post("/api/chat/stream", json={"frage": "Test"})
+    assert r.status_code == 401
+
+
 def test_chat_mit_verlauf(client):
     headers = login(client, "gast", "gast123")
     r = client.post(

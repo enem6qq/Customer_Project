@@ -279,13 +279,39 @@ $("chatForm").addEventListener("submit", async (ev) => {
   const laden = nachricht("", "bot");
   laden.innerHTML = 'Suche in der Wissensdatenbank<span class="punkte"></span>';
   try {
-    const r = await fetch("/api/chat", {
+    // Streaming: die Antwort erscheint Wort für Wort, sobald das LLM liefert.
+    const r = await fetch("/api/chat/stream", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
       body: JSON.stringify({ frage, verlauf }),
     });
     if (r.status === 401) { speicherLeeren(); location.reload(); return; }
-    const d = await r.json();
+    if (!r.ok || !r.body) { laden.textContent = "Fehler: Server antwortet nicht (" + r.status + ")."; return; }
+
+    const leser = r.body.getReader();
+    const dekodierer = new TextDecoder();
+    let puffer = "", antwortText = "";
+    const d = { antwort: "", quellen: [], ansprechpartner: [] };
+    while (true) {
+      const { done, value } = await leser.read();
+      if (done) break;
+      puffer += dekodierer.decode(value, { stream: true });
+      let umbruch;
+      while ((umbruch = puffer.indexOf("\n")) >= 0) {
+        const zeile = puffer.slice(0, umbruch).trim();
+        puffer = puffer.slice(umbruch + 1);
+        if (!zeile) continue;
+        const ereignis = JSON.parse(zeile);
+        if (ereignis.typ === "meta") {
+          d.quellen = ereignis.quellen || [];
+          d.ansprechpartner = ereignis.ansprechpartner || [];
+        } else if (ereignis.typ === "token") {
+          antwortText += ereignis.text;
+          laden.innerHTML = mdZuHtml(antwortText);
+        }
+      }
+    }
+    d.antwort = antwortText;
     laden.innerHTML = mdZuHtml(d.antwort);
     verlauf.push({ rolle: "nutzer", text: frage });
     verlauf.push({ rolle: "bot", text: d.antwort });
