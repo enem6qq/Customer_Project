@@ -21,6 +21,8 @@
 - ✅ Automatischer Reindex (Datei-Wächter), Feedback-Buttons 👍/👎
 - ✅ Admin-Dashboard (/admin): Status, Feedback-Auswertung, Reindex
 - ✅ UI: Beispielfragen-Chips, Dark Mode, formatierte Antworten
+- ✅ Streaming-Antworten (Wort für Wort, Quellen sofort)
+- ✅ Lokale Vektor-Datenbank (SQLite-Embedding-Cache, schneller Neustart)
 - Echte Kundendokumente eines Pilotpartners einspielen (anonymisiert testen)
 
 ## Phase 2 – Pilotkunde (4–8 Wochen)
@@ -29,8 +31,9 @@
   Zugriffsgruppen aus AD-Gruppen statt Ordnernamen
 - **Konnektoren:** Netzlaufwerke (SMB), SharePoint, E-Mail-Archive –
   inkl. Übernahme der Original-Berechtigungen (ACL-Spiegelung)
-- Automatischer, inkrementeller Reindex (Watcher statt manuellem Endpoint)
-- Vektor-Datenbank (Qdrant oder pgvector) statt In-Memory-Index
+- Server-Vektor-Datenbank (Qdrant oder pgvector) für sehr große Bestände
+  und mehrere Backend-Instanzen (die lokale SQLite-Vektor-DB ist bis in den
+  sechsstelligen Chunk-Bereich völlig ausreichend)
 - Audit-Log, Feedback-Buttons („Antwort hilfreich?") zur Qualitätsmessung
 
 ## Phase 3 – Produkt / Mehrmandantenfähigkeit

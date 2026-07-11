@@ -81,3 +81,49 @@ def test_ollama_fallback_wenn_nicht_erreichbar(monkeypatch):
 def test_extractive_ohne_treffer():
     antwort = ExtractiveProvider().antworte("Irgendwas", [], "Demo GmbH")
     assert "nichts gefunden" in antwort
+
+
+def test_extractive_stream_liefert_gesamtantwort():
+    stuecke = list(ExtractiveProvider().antworte_stream("Frage", TREFFER, "Demo GmbH"))
+    assert "urlaubsregelung" in "".join(stuecke)
+
+
+class _FakeStreamResponse:
+    def __init__(self, zeilen):
+        self._zeilen = zeilen
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def raise_for_status(self):
+        pass
+
+    def iter_lines(self):
+        yield from self._zeilen
+
+
+def test_ollama_streaming(monkeypatch):
+    zeilen = [
+        '{"response": "Urlaub wird ", "done": false}',
+        '{"response": "digital beantragt.", "done": false}',
+        '{"response": "", "done": true}',
+    ]
+    monkeypatch.setattr(
+        httpx, "stream", lambda *a, **k: _FakeStreamResponse(zeilen)
+    )
+    provider = OllamaProvider("http://localhost:11434", "llama3.1:8b")
+    stuecke = list(provider.antworte_stream("Wie beantrage ich Urlaub?", TREFFER, "Demo GmbH"))
+    assert stuecke == ["Urlaub wird ", "digital beantragt."]
+
+
+def test_ollama_streaming_fallback(monkeypatch):
+    def kaputt(*a, **k):
+        raise httpx.ConnectError("Verbindung abgelehnt")
+
+    monkeypatch.setattr(httpx, "stream", kaputt)
+    provider = OllamaProvider("http://localhost:11434", "llama3.1:8b")
+    stuecke = list(provider.antworte_stream("Wie beantrage ich Urlaub?", TREFFER, "Demo GmbH"))
+    assert "urlaubsregelung" in "".join(stuecke)

@@ -12,9 +12,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 
 import httpx
 
@@ -61,6 +63,17 @@ class LLMProvider(ABC):
         verlauf: list[dict] | None = None,
     ) -> str: ...
 
+    def antworte_stream(
+        self,
+        frage: str,
+        treffer: list[Treffer],
+        unternehmen: str,
+        verlauf: list[dict] | None = None,
+    ) -> Iterator[str]:
+        """Antwort stückweise liefern. Standard: alles auf einmal –
+        echte Streaming-Provider (Ollama/OpenAI-kompatibel) überschreiben das."""
+        yield self.antworte(frage, treffer, unternehmen, verlauf)
+
 
 class ExtractiveProvider(LLMProvider):
     """Antwort ohne LLM: die besten Fundstellen, sauber formatiert.
@@ -93,8 +106,8 @@ class OllamaProvider(LLMProvider):
         self.base_url = base_url.rstrip("/")
         self.model = model
 
-    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
-        prompt = (
+    def _prompt(self, frage, treffer, unternehmen, verlauf) -> str:
+        return (
             SYSTEM_PROMPT.format(unternehmen=unternehmen)
             + "\n\n"
             + baue_verlauf_text(verlauf)
@@ -102,6 +115,32 @@ class OllamaProvider(LLMProvider):
             + baue_kontext(treffer)
             + f"\n\n--- Frage ---\n{frage}"
         )
+
+    def antworte_stream(self, frage, treffer, unternehmen, verlauf=None) -> Iterator[str]:
+        prompt = self._prompt(frage, treffer, unternehmen, verlauf)
+        try:
+            with httpx.stream(
+                "POST",
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "prompt": prompt, "stream": True},
+                timeout=300,
+            ) as response:
+                response.raise_for_status()
+                for zeile in response.iter_lines():
+                    if not zeile:
+                        continue
+                    daten = json.loads(zeile)
+                    stueck = daten.get("response", "")
+                    if stueck:
+                        yield stueck
+                    if daten.get("done"):
+                        return
+        except (httpx.HTTPError, json.JSONDecodeError):
+            logger.exception("Ollama-Streaming fehlgeschlagen – extraktiver Fallback")
+            yield ExtractiveProvider().antworte(frage, treffer, unternehmen)
+
+    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
+        prompt = self._prompt(frage, treffer, unternehmen, verlauf)
         try:
             response = httpx.post(
                 f"{self.base_url}/api/generate",
@@ -121,8 +160,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.model = model
         self.api_key = os.environ.get(api_key_env, "")
 
-    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+    def _messages(self, frage, treffer, unternehmen, verlauf) -> list[dict]:
         messages = [{"role": "system", "content": SYSTEM_PROMPT.format(unternehmen=unternehmen)}]
         for eintrag in verlauf or []:
             rolle = "user" if eintrag.get("rolle") == "nutzer" else "assistant"
@@ -135,6 +173,42 @@ class OpenAICompatibleProvider(LLMProvider):
                 + f"\n\n--- Frage ---\n{frage}",
             }
         )
+        return messages
+
+    def antworte_stream(self, frage, treffer, unternehmen, verlauf=None) -> Iterator[str]:
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        try:
+            with httpx.stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json={
+                    "model": self.model,
+                    "messages": self._messages(frage, treffer, unternehmen, verlauf),
+                    "temperature": 0.2,
+                    "stream": True,
+                },
+                timeout=300,
+            ) as response:
+                response.raise_for_status()
+                for zeile in response.iter_lines():
+                    if not zeile.startswith("data:"):
+                        continue
+                    daten = zeile[5:].strip()
+                    if daten == "[DONE]":
+                        return
+                    stueck = (
+                        json.loads(daten)["choices"][0].get("delta", {}).get("content", "")
+                    )
+                    if stueck:
+                        yield stueck
+        except (httpx.HTTPError, json.JSONDecodeError, KeyError, IndexError):
+            logger.exception("LLM-Streaming fehlgeschlagen – extraktiver Fallback")
+            yield ExtractiveProvider().antworte(frage, treffer, unternehmen)
+
+    def antworte(self, frage, treffer, unternehmen, verlauf=None) -> str:
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        messages = self._messages(frage, treffer, unternehmen, verlauf)
         try:
             response = httpx.post(
                 f"{self.base_url}/chat/completions",
